@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Map of Gran Canaria</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            max-width: 300px;
+            z-index: 100;
+        }
+
+        #info h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        #info p {
+            margin: 5px 0;
+            line-height: 1.5;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="info">
+        <h1>Gran Canaria 3D Terrain Map</h1>
+        <p><strong>Controls:</strong></p>
+        <p>• Left Mouse: Rotate camera</p>
+        <p>• Right Mouse: Pan</p>
+        <p>• Scroll: Zoom in/out</p>
+        <p><strong>Peak:</strong> Pico de las Nieves (1,949m)</p>
+    </div>
+    <div id="loading">Loading terrain...</div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- OrbitControls for camera interaction -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- Main application script -->
+    <script src="js/main.js"></script>
+</body>
+</html>

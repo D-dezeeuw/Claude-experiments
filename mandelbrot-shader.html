@@ -8,10 +8,77 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; background: #000; }
     canvas { display: block; width: 100vw; height: 100vh; }
+    .controls {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: rgba(10, 8, 20, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 0.6rem 1.25rem;
+      z-index: 10;
+      user-select: none;
+      transition: opacity 0.4s;
+    }
+    .controls:hover { opacity: 1 !important; }
+    .controls label {
+      color: rgba(255,255,255,0.5);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .controls .val {
+      color: rgba(255,255,255,0.85);
+      font-variant-numeric: tabular-nums;
+      min-width: 3.2em;
+      text-align: center;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 160px;
+      height: 4px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <canvas id="glCanvas"></canvas>
+
+  <div class="controls" id="controls">
+    <label>SPEED</label>
+    <label class="val" id="speedLabel">0.50</label>
+    <input type="range" id="speedSlider" min="-100" max="100" value="50" step="1">
+  </div>
+
   <script>
     const canvas = document.getElementById('glCanvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -29,6 +96,32 @@
     }
     window.addEventListener('resize', resize);
     resize();
+
+    // --- Speed slider ---
+    const slider = document.getElementById('speedSlider');
+    const speedLabel = document.getElementById('speedLabel');
+    const controlsEl = document.getElementById('controls');
+    let speed = 0.5;
+
+    slider.addEventListener('input', () => {
+      speed = parseInt(slider.value, 10) / 100;
+      speedLabel.textContent = speed.toFixed(2);
+    });
+
+    // Auto-fade controls after inactivity
+    let fadeTimer;
+    function showControls() {
+      controlsEl.style.opacity = '1';
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(() => { controlsEl.style.opacity = '0.35'; }, 3000);
+    }
+    document.addEventListener('mousemove', showControls);
+    document.addEventListener('touchstart', showControls);
+    showControls();
+
+    // --- Accumulated time (integrates speed so direction/pause works smoothly) ---
+    let accTime = 0;
+    let lastNow = 0;
 
     // --- Vertex Shader ---
     const vertSrc = `
@@ -58,22 +151,39 @@
       void main() {
         vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
 
-        // --- Smooth, slow wandering zoom path ---
-        // The camera slowly spirals into interesting regions of the Mandelbrot set
-        float t = u_time * 0.012;   // very slow time scale
+        float t = u_time;
 
-        // Zoom: exponential zoom that breathes in & out
-        float zoomCycle = sin(t * 0.3) * 0.5 + 0.5;        // 0..1 oscillation
-        float zoom = pow(2.0, 1.0 + zoomCycle * 14.0);      // 2x .. 16384x
+        // --- Organic wandering zoom ---
+        // Multiple layered sine waves for non-repeating, organic feel
+        float wave1 = sin(t * 0.31) * 0.5 + 0.5;
+        float wave2 = sin(t * 0.17 + 1.7) * 0.5 + 0.5;
+        float wave3 = sin(t * 0.09 + 3.1) * 0.5 + 0.5;
+        float zoomCycle = wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2;  // layered 0..1
 
-        // Center wanders around the Misiurewicz point near (-0.743643887, 0.131825905)
-        // with gentle circular/lissajous drift
-        float cx = -0.743643887 + 0.002 * sin(t * 0.47) / (1.0 + zoomCycle * 4.0);
-        float cy =  0.131825905 + 0.002 * cos(t * 0.53) / (1.0 + zoomCycle * 4.0);
+        // Faster zoom: deeper range
+        float zoom = pow(2.0, 1.5 + zoomCycle * 18.0);  // ~2.8x .. 524288x
+
+        // Organic center drift using incommensurate lissajous curves
+        // Wander around the Misiurewicz point near (-0.743643887, 0.131825905)
+        float drift = 0.003 / (1.0 + zoomCycle * 8.0);  // tighten drift at deep zoom
+        float cx = -0.743643887
+                 + drift * sin(t * 0.47 + 0.0)
+                 + drift * 0.4 * sin(t * 0.71 + 2.3)
+                 + drift * 0.15 * sin(t * 1.13 + 4.1);
+        float cy =  0.131825905
+                 + drift * cos(t * 0.53 + 1.0)
+                 + drift * 0.35 * cos(t * 0.83 + 3.7)
+                 + drift * 0.12 * cos(t * 1.31 + 5.3);
+
+        // Gentle rotation for extra organic feel
+        float angle = sin(t * 0.11) * 0.15 + sin(t * 0.23) * 0.08;
+        float ca = cos(angle);
+        float sa = sin(angle);
+        vec2 ruv = vec2(uv.x * ca - uv.y * sa, uv.x * sa + uv.y * ca);
 
         // Map screen coords to fractal coords
-        float fx = uv.x / zoom + cx;
-        float fy = uv.y / zoom + cy;
+        float fx = ruv.x / zoom + cx;
+        float fy = ruv.y / zoom + cy;
 
         // --- Mandelbrot iteration with smooth escape ---
         float x = 0.0;
@@ -106,7 +216,7 @@
           float smoothVal = sl / float(MAX_ITER);
 
           // Create layered color using palette with time shift for subtle animation
-          float colorIdx = sqrt(smoothVal) * 4.0 + u_time * 0.005;
+          float colorIdx = sqrt(smoothVal) * 4.0 + u_time * 0.02;
           col = palette(colorIdx);
 
           // Add glow near the boundary
@@ -166,8 +276,15 @@
 
     // --- Render loop ---
     function render(now) {
+      const nowSec = now * 0.001;
+      const dt = lastNow === 0 ? 0 : nowSec - lastNow;
+      lastNow = nowSec;
+
+      // Integrate time with current speed (supports reverse & pause)
+      accTime += dt * speed;
+
       gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, now * 0.001);   // seconds
+      gl.uniform1f(uTime, accTime);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       requestAnimationFrame(render);
     }

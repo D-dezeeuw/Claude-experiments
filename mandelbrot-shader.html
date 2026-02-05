@@ -177,37 +177,35 @@
 
         float t = u_time;
 
-        // ── Zoom cycle ──────────────────────────────────────────
-        // Each cycle: slow zoom IN (65%), fast zoom OUT (35%)
-        // At peak zoom, seed coordinates morph to the next target
-        // so the zoom-out reveals an entirely new fractal region.
-        float cycleDur = 28.0;
+        // ── Endless forward zoom ──────────────────────────────────
+        // Always diving deeper. Each cycle goes from 4x to 8192x
+        // into a seed point, then fades through black and starts
+        // the next dive at a new location. No breathing, no reversal.
+        float cycleDur = 24.0;
         float rawPhase = t / cycleDur;
         float cycleIdx = floor(rawPhase);
         float phase = fract(rawPhase);
 
-        // Asymmetric ping-pong envelope
-        float rising  = smoothstep(0.0, 0.65, phase);   // 0→1 slow in
-        float falling = 1.0 - smoothstep(0.65, 1.0, phase); // 1→0 faster out
-        float zoomPhase = min(rising, falling);
+        // Ease the zoom ramp so it starts gently, accelerates, then
+        // eases into the deepest point before the fade
+        float ep = smoothstep(0.0, 1.0, phase);
 
-        // Extra smoothing pass for buttery easing
-        zoomPhase = zoomPhase * zoomPhase * (3.0 - 2.0 * zoomPhase);
+        // Always-forward zoom: 4x → 8192x
+        float zoom = pow(2.0, 2.0 + ep * 11.0);
 
-        // Zoom range: 4x → 8192x (stays within float32 precision)
-        float zoom = pow(2.0, 2.0 + zoomPhase * 11.0);
+        // Seed point for this cycle (no morphing -- fade hides the jump)
+        vec2 target = seedPoint(cycleIdx);
 
-        // ── Seed point selection ────────────────────────────────
-        // Morph coordinates at peak zoom (phase 0.58–0.72) where
-        // the view is deep in fine detail and the shift is invisible.
-        vec2 current = seedPoint(cycleIdx);
-        vec2 next    = seedPoint(cycleIdx + 1.0);
-        float morphT = smoothstep(0.58, 0.72, phase);
-        vec2 target  = mix(current, next, morphT);
+        // ── Fade mask ─────────────────────────────────────────────
+        // Brief fade to/from black at cycle boundaries hides the
+        // coordinate reset. ~1.5s fade at each end of the cycle.
+        float fadeIn  = smoothstep(0.0, 0.07, phase);
+        float fadeOut = 1.0 - smoothstep(0.93, 1.0, phase);
+        float fade = fadeIn * fadeOut;
 
-        // ── Subtle organic rotation ─────────────────────────────
-        // Very small amplitude so the fractal structure stays readable
-        float angle = sin(t * 0.07) * 0.08;
+        // ── Continuous slow rotation ──────────────────────────────
+        // Tied to accumulated time so slider controls it naturally
+        float angle = t * 0.03;
         float ca = cos(angle);
         float sa = sin(angle);
         vec2 ruv = vec2(uv.x * ca - uv.y * sa,
@@ -217,7 +215,7 @@
         float fx = ruv.x / zoom + target.x;
         float fy = ruv.y / zoom + target.y;
 
-        // ── Mandelbrot iteration (smooth escape-time) ───────────
+        // ── Mandelbrot iteration (smooth escape-time) ─────────────
         float x = 0.0;
         float y = 0.0;
         float x2 = 0.0;
@@ -236,7 +234,7 @@
           y2 = y * y;
         }
 
-        // ── Coloring ────────────────────────────────────────────
+        // ── Coloring ──────────────────────────────────────────────
         vec3 col;
         if (iter == MAX_ITER) {
           col = vec3(0.02, 0.0, 0.05);
@@ -244,7 +242,7 @@
           float sl = float(iter) - log2(log2(x2 + y2)) + 4.0;
           float smoothVal = sl / float(MAX_ITER);
 
-          // Shift palette with zoom depth so colors evolve as you dive
+          // Palette shifts with zoom depth for evolving color
           float depthShift = log2(zoom) * 0.06;
           float colorIdx = sqrt(smoothVal) * 4.0 + depthShift + t * 0.015;
           col = palette(colorIdx);
@@ -256,9 +254,9 @@
           col = pow(col, vec3(0.85));
         }
 
-        // Vignette
+        // Vignette + fade mask
         float vig = 1.0 - 0.3 * length(uv);
-        col *= vig;
+        col *= vig * fade;
 
         gl_FragColor = vec4(col, 1.0);
       }

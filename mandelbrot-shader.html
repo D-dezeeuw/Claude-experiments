@@ -138,14 +138,38 @@
       uniform vec2 u_resolution;
       uniform float u_time;
 
-      // --- Smooth color palette ---
+      // --- Color palette: deep purple -> burnt orange -> pale gold ---
       vec3 palette(float t) {
-        // Deep purple -> fiery orange -> pale gold
-        vec3 a = vec3(0.30, 0.10, 0.40);  // base: dark purple
-        vec3 b = vec3(0.60, 0.40, 0.30);  // amplitude
-        vec3 c = vec3(1.00, 0.80, 0.60);  // frequency
-        vec3 d = vec3(0.00, 0.15, 0.55);  // phase
+        vec3 a = vec3(0.30, 0.10, 0.40);
+        vec3 b = vec3(0.60, 0.40, 0.30);
+        vec3 c = vec3(1.00, 0.80, 0.60);
+        vec3 d = vec3(0.00, 0.15, 0.55);
         return a + b * cos(6.28318 * (c * t + d));
+      }
+
+      // --- Curated seed points along the Mandelbrot boundary ---
+      // Each lives in a visually rich region with deep self-similar structure.
+      // Weighted-sum selection avoids sequential dependency issues.
+      vec2 seedPoint(float idx) {
+        float i = mod(idx, 8.0);
+
+        float w0 = 1.0 - step(1.0, i);
+        float w1 = step(1.0, i) * (1.0 - step(2.0, i));
+        float w2 = step(2.0, i) * (1.0 - step(3.0, i));
+        float w3 = step(3.0, i) * (1.0 - step(4.0, i));
+        float w4 = step(4.0, i) * (1.0 - step(5.0, i));
+        float w5 = step(5.0, i) * (1.0 - step(6.0, i));
+        float w6 = step(6.0, i) * (1.0 - step(7.0, i));
+        float w7 = step(7.0, i);
+
+        return vec2(-0.743643887, 0.131825905)  * w0   // Seahorse valley
+             + vec2(-0.1011,      0.9563)        * w1   // Double spiral
+             + vec2( 0.281717921, 0.5771052841)  * w2   // Elephant valley
+             + vec2(-0.761574,   -0.0847596)     * w3   // Spiral arm
+             + vec2(-1.25066,     0.02012)       * w4   // Mini-brot antenna
+             + vec2(-0.0452407,   0.9868162)     * w5   // Starfish region
+             + vec2(-0.122561,    0.744862)      * w6   // Period-3 bulb tip
+             + vec2(-1.401155,    0.0)           * w7;  // Needle tip
       }
 
       void main() {
@@ -153,49 +177,56 @@
 
         float t = u_time;
 
-        // --- Organic wandering zoom ---
-        // Multiple layered sine waves for non-repeating, organic feel
-        float wave1 = sin(t * 0.31) * 0.5 + 0.5;
-        float wave2 = sin(t * 0.17 + 1.7) * 0.5 + 0.5;
-        float wave3 = sin(t * 0.09 + 3.1) * 0.5 + 0.5;
-        float zoomCycle = wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2;  // layered 0..1
+        // ── Zoom cycle ──────────────────────────────────────────
+        // Each cycle: slow zoom IN (65%), fast zoom OUT (35%)
+        // At peak zoom, seed coordinates morph to the next target
+        // so the zoom-out reveals an entirely new fractal region.
+        float cycleDur = 28.0;
+        float rawPhase = t / cycleDur;
+        float cycleIdx = floor(rawPhase);
+        float phase = fract(rawPhase);
 
-        // Faster zoom: deeper range
-        float zoom = pow(2.0, 1.5 + zoomCycle * 18.0);  // ~2.8x .. 524288x
+        // Asymmetric ping-pong envelope
+        float rising  = smoothstep(0.0, 0.65, phase);   // 0→1 slow in
+        float falling = 1.0 - smoothstep(0.65, 1.0, phase); // 1→0 faster out
+        float zoomPhase = min(rising, falling);
 
-        // Organic center drift using incommensurate lissajous curves
-        // Wander around the Misiurewicz point near (-0.743643887, 0.131825905)
-        float drift = 0.003 / (1.0 + zoomCycle * 8.0);  // tighten drift at deep zoom
-        float cx = -0.743643887
-                 + drift * sin(t * 0.47 + 0.0)
-                 + drift * 0.4 * sin(t * 0.71 + 2.3)
-                 + drift * 0.15 * sin(t * 1.13 + 4.1);
-        float cy =  0.131825905
-                 + drift * cos(t * 0.53 + 1.0)
-                 + drift * 0.35 * cos(t * 0.83 + 3.7)
-                 + drift * 0.12 * cos(t * 1.31 + 5.3);
+        // Extra smoothing pass for buttery easing
+        zoomPhase = zoomPhase * zoomPhase * (3.0 - 2.0 * zoomPhase);
 
-        // Gentle rotation for extra organic feel
-        float angle = sin(t * 0.11) * 0.15 + sin(t * 0.23) * 0.08;
+        // Zoom range: 4x → 8192x (stays within float32 precision)
+        float zoom = pow(2.0, 2.0 + zoomPhase * 11.0);
+
+        // ── Seed point selection ────────────────────────────────
+        // Morph coordinates at peak zoom (phase 0.58–0.72) where
+        // the view is deep in fine detail and the shift is invisible.
+        vec2 current = seedPoint(cycleIdx);
+        vec2 next    = seedPoint(cycleIdx + 1.0);
+        float morphT = smoothstep(0.58, 0.72, phase);
+        vec2 target  = mix(current, next, morphT);
+
+        // ── Subtle organic rotation ─────────────────────────────
+        // Very small amplitude so the fractal structure stays readable
+        float angle = sin(t * 0.07) * 0.08;
         float ca = cos(angle);
         float sa = sin(angle);
-        vec2 ruv = vec2(uv.x * ca - uv.y * sa, uv.x * sa + uv.y * ca);
+        vec2 ruv = vec2(uv.x * ca - uv.y * sa,
+                        uv.x * sa + uv.y * ca);
 
-        // Map screen coords to fractal coords
-        float fx = ruv.x / zoom + cx;
-        float fy = ruv.y / zoom + cy;
+        // Map screen → fractal coordinates
+        float fx = ruv.x / zoom + target.x;
+        float fy = ruv.y / zoom + target.y;
 
-        // --- Mandelbrot iteration with smooth escape ---
+        // ── Mandelbrot iteration (smooth escape-time) ───────────
         float x = 0.0;
         float y = 0.0;
         float x2 = 0.0;
         float y2 = 0.0;
         const int MAX_ITER = 512;
         int iter = MAX_ITER;
-        float escape = 256.0;  // large bailout for smooth coloring
 
         for (int i = 0; i < 512; i++) {
-          if (x2 + y2 > escape) {
+          if (x2 + y2 > 256.0) {
             iter = i;
             break;
           }
@@ -205,29 +236,27 @@
           y2 = y * y;
         }
 
-        // --- Color computation ---
+        // ── Coloring ────────────────────────────────────────────
         vec3 col;
         if (iter == MAX_ITER) {
-          // Interior: deep dark purple-black
           col = vec3(0.02, 0.0, 0.05);
         } else {
-          // Smooth iteration count (normalized)
           float sl = float(iter) - log2(log2(x2 + y2)) + 4.0;
           float smoothVal = sl / float(MAX_ITER);
 
-          // Create layered color using palette with time shift for subtle animation
-          float colorIdx = sqrt(smoothVal) * 4.0 + u_time * 0.02;
+          // Shift palette with zoom depth so colors evolve as you dive
+          float depthShift = log2(zoom) * 0.06;
+          float colorIdx = sqrt(smoothVal) * 4.0 + depthShift + t * 0.015;
           col = palette(colorIdx);
 
-          // Add glow near the boundary
+          // Warm glow near the boundary
           float glow = exp(-smoothVal * 8.0);
           col += vec3(0.6, 0.2, 0.0) * glow * 0.4;
 
-          // Boost contrast with a subtle S-curve
           col = pow(col, vec3(0.85));
         }
 
-        // Light vignette
+        // Vignette
         float vig = 1.0 - 0.3 * length(uv);
         col *= vig;
 
@@ -280,7 +309,6 @@
       const dt = lastNow === 0 ? 0 : nowSec - lastNow;
       lastNow = nowSec;
 
-      // Integrate time with current speed (supports reverse & pause)
       accTime += dt * speed;
 
       gl.uniform2f(uRes, canvas.width, canvas.height);

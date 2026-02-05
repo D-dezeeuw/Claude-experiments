@@ -123,6 +123,19 @@
       <label class="val" id="caLabel">40</label>
       <input type="range" class="fx" id="caSlider" min="0" max="100" value="40" step="1">
     </div>
+    <div class="controls-row">
+      <label>EXPLODE</label>
+      <label class="val" id="explodeLabel">2.0</label>
+      <input type="range" class="fx" id="explodeSlider" min="50" max="300" value="200" step="1">
+      <span class="sep"></span>
+      <label>TRAP</label>
+      <label class="val" id="trapLabel">POINT</label>
+      <input type="range" class="fx" id="trapSlider" min="0" max="400" value="0" step="1">
+      <span class="sep"></span>
+      <label>PARTICLES</label>
+      <label class="val" id="particleLabel">OFF</label>
+      <input type="range" class="fx" id="particleSlider" min="0" max="100" value="0" step="1">
+    </div>
   </div>
 
   <script>
@@ -215,6 +228,35 @@
       caLbl.textContent = v;
     });
 
+    // ── Animation sliders (explode, trap, particles) ──────────
+    let bailoutVal = 2.0, trapTypeVal = 0.0, particleCount = 0;
+    const trapNames = ['POINT', 'LINE-X', 'LINE-Y', 'PLANE', 'SPHERE'];
+
+    const explodeSlider  = document.getElementById('explodeSlider');
+    const trapSlider     = document.getElementById('trapSlider');
+    const particleSlider = document.getElementById('particleSlider');
+    const explodeLbl     = document.getElementById('explodeLabel');
+    const trapLbl        = document.getElementById('trapLabel');
+    const particleLbl    = document.getElementById('particleLabel');
+
+    explodeSlider.addEventListener('input', () => {
+      const v = parseInt(explodeSlider.value, 10);
+      bailoutVal = v / 100;  // 50-300 → 0.5-3.0
+      explodeLbl.textContent = bailoutVal.toFixed(1);
+    });
+    trapSlider.addEventListener('input', () => {
+      const v = parseInt(trapSlider.value, 10);
+      trapTypeVal = v / 100;  // 0-400 → 0.0-4.0
+      const idx = Math.min(Math.floor(trapTypeVal), 4);
+      trapLbl.textContent = trapNames[idx];
+    });
+    particleSlider.addEventListener('input', () => {
+      const v = parseInt(particleSlider.value, 10);
+      particleCount = v * 10;  // 0-100 → 0-1000 particles
+      particleLbl.textContent = v === 0 ? 'OFF' : particleCount;
+      if (particleCount > 0 && !particlesInitialized) initParticles();
+    });
+
     // ── Auto-fade controls ───────────────────────────────────
     let fadeTimer;
     function showControls() {
@@ -290,9 +332,30 @@
       uniform vec3  u_pc;
       uniform vec3  u_pd;
       uniform float u_sss;
+      uniform float u_bailout;
+      uniform float u_trapType;
 
       vec3 palette(float t) {
         return u_pa + u_pb * cos(6.28318 * (u_pc * t + u_pd));
+      }
+
+      // ── Orbit trap calculation ───────────────────────────
+      // Blends between 5 trap types based on u_trapType (0-4)
+      float calcTrap(vec3 z) {
+        float trapPoint  = length(z);               // 0: distance to origin
+        float trapLineX  = length(z.yz);            // 1: distance to X-axis
+        float trapLineY  = length(z.xz);            // 2: distance to Y-axis
+        float trapPlane  = abs(z.z);                // 3: distance to XY plane
+        float trapSphere = abs(length(z) - 1.0);    // 4: distance to unit sphere
+
+        // Smooth blend between adjacent trap types
+        float t = fract(u_trapType);
+        float trapVal;
+        if (u_trapType < 1.0)      trapVal = mix(trapPoint, trapLineX, t);
+        else if (u_trapType < 2.0) trapVal = mix(trapLineX, trapLineY, t);
+        else if (u_trapType < 3.0) trapVal = mix(trapLineY, trapPlane, t);
+        else                       trapVal = mix(trapPlane, trapSphere, t);
+        return trapVal;
       }
 
       // ── Mandelbulb distance estimator ─────────────────────
@@ -304,7 +367,7 @@
 
         for (int i = 0; i < 8; i++) {
           r = length(z);
-          if (r > 2.0) break;
+          if (r > u_bailout) break;
           float theta = acos(clamp(z.z / r, -1.0, 1.0));
           float phi   = atan(z.y, z.x);
           dr = pow(r, power - 1.0) * power * dr + 1.0;
@@ -313,7 +376,7 @@
           phi   *= power;
           z = zr * vec3(sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta));
           z += pos;
-          trap = min(trap, length(z));
+          trap = min(trap, calcTrap(z));
         }
         r = max(r, 1e-10);
         return vec2(0.5 * log(r) * r / dr, trap);
@@ -495,6 +558,56 @@
       }
     `;
 
+    // ══════════════════════════════════════════════════════════
+    // PARTICLE SYSTEM — emitted from fractal surface
+    // ══════════════════════════════════════════════════════════
+    const particleVertSrc = `
+      attribute vec3 a_pos;       // initial position on surface
+      attribute vec3 a_vel;       // drift direction (outward)
+      attribute float a_birth;    // birth time offset
+
+      uniform float u_time;
+      uniform float u_lifetime;
+      uniform mat4 u_mvp;
+
+      varying float v_alpha;
+      varying float v_age;
+
+      void main() {
+        float age = mod(u_time - a_birth, u_lifetime);
+        float t = age / u_lifetime;
+
+        // Drift outward with slight acceleration
+        vec3 pos = a_pos + a_vel * age * (0.3 + t * 0.2);
+
+        // Fade in then out
+        v_alpha = smoothstep(0.0, 0.1, t) * (1.0 - smoothstep(0.7, 1.0, t));
+        v_age = t;
+
+        gl_Position = u_mvp * vec4(pos, 1.0);
+        gl_PointSize = mix(6.0, 2.0, t);
+      }
+    `;
+
+    const particleFragSrc = `
+      precision highp float;
+
+      uniform vec3 u_color;
+      varying float v_alpha;
+      varying float v_age;
+
+      void main() {
+        // Soft circular point sprite
+        vec2 c = gl_PointCoord - 0.5;
+        float d = length(c);
+        float a = smoothstep(0.5, 0.2, d) * v_alpha * 0.6;
+
+        // Color shifts from warm to cool as particle ages
+        vec3 col = mix(u_color, u_color * 0.5 + vec3(0.2, 0.1, 0.3), v_age);
+        gl_FragColor = vec4(col, a);
+      }
+    `;
+
     // ── Shader compile / link ────────────────────────────────
     function compileShader(type, src) {
       const s = gl.createShader(type);
@@ -520,6 +633,174 @@
 
     const sceneProg = makeProgram(vertSrc, sceneFragSrc);
     const postProg  = makeProgram(vertSrc, postFragSrc);
+    const particleProg = makeProgram(particleVertSrc, particleFragSrc);
+
+    // ── Particle system state ─────────────────────────────────
+    let particlesInitialized = false;
+    let particleBuf = null;
+    const MAX_PARTICLES = 1000;
+    const PARTICLE_LIFETIME = 4.0;
+
+    const partU = {
+      time:     gl.getUniformLocation(particleProg, 'u_time'),
+      lifetime: gl.getUniformLocation(particleProg, 'u_lifetime'),
+      mvp:      gl.getUniformLocation(particleProg, 'u_mvp'),
+      color:    gl.getUniformLocation(particleProg, 'u_color'),
+    };
+    const partA = {
+      pos:   gl.getAttribLocation(particleProg, 'a_pos'),
+      vel:   gl.getAttribLocation(particleProg, 'a_vel'),
+      birth: gl.getAttribLocation(particleProg, 'a_birth'),
+    };
+
+    function initParticles() {
+      if (particlesInitialized) return;
+      particlesInitialized = true;
+
+      // Generate particles on approximate fractal surface
+      // Using random directions from origin, placed at radius ~1.2-1.8
+      const data = new Float32Array(MAX_PARTICLES * 7); // pos(3) + vel(3) + birth(1)
+
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        // Random point on sphere, then perturb for organic distribution
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 1.2 + Math.random() * 0.6;
+
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.sin(phi) * Math.sin(theta);
+        const z = r * Math.cos(phi);
+
+        // Velocity: outward direction with some randomness
+        const vr = 0.15 + Math.random() * 0.1;
+        const vx = x / r * vr + (Math.random() - 0.5) * 0.05;
+        const vy = y / r * vr + (Math.random() - 0.5) * 0.05;
+        const vz = z / r * vr + (Math.random() - 0.5) * 0.05;
+
+        // Birth time offset for staggered spawning
+        const birth = Math.random() * PARTICLE_LIFETIME;
+
+        const idx = i * 7;
+        data[idx]     = x;
+        data[idx + 1] = y;
+        data[idx + 2] = z;
+        data[idx + 3] = vx;
+        data[idx + 4] = vy;
+        data[idx + 5] = vz;
+        data[idx + 6] = birth;
+      }
+
+      particleBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, particleBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    }
+
+    // Simple MVP matrix construction (matches scene camera)
+    function buildMVP(t) {
+      const camAng = t * 0.15;
+      const camY = 0.8 + 0.5 * Math.sin(t * 0.07);
+      const camD = 3.2;
+
+      // Camera position
+      const cx = camD * Math.cos(camAng);
+      const cy = camY;
+      const cz = camD * Math.sin(camAng);
+
+      // Look-at vectors
+      const fx = -cx, fy = -cy, fz = -cz;
+      const fl = Math.sqrt(fx*fx + fy*fy + fz*fz);
+      const fwx = fx/fl, fwy = fy/fl, fwz = fz/fl;
+
+      // Right vector (cross with up)
+      const ux = 0, uy = 1, uz = 0;
+      const rx = fwy*uz - fwz*uy;
+      const ry = fwz*ux - fwx*uz;
+      const rz = fwx*uy - fwy*ux;
+      const rl = Math.sqrt(rx*rx + ry*ry + rz*rz);
+      const rux = rx/rl, ruy = ry/rl, ruz = rz/rl;
+
+      // Up vector
+      const vux = fwy*ruz - fwz*ruy;
+      const vuy = fwz*rux - fwx*ruz;
+      const vuz = fwx*ruy - fwy*rux;
+
+      // View matrix (transposed rotation + translation)
+      const tx = -(rux*cx + ruy*cy + ruz*cz);
+      const ty = -(vux*cx + vuy*cy + vuz*cz);
+      const tz = -(fwx*cx + fwy*cy + fwz*cz);
+
+      // Perspective projection
+      const aspect = canvas.width / canvas.height;
+      const fov = 1.8; // matches scene shader
+      const near = 0.1, far = 20.0;
+      const f = 1.0 / Math.tan(Math.atan(1/fov));
+
+      // Combined MVP (column-major for WebGL)
+      return new Float32Array([
+        f/aspect * rux, f/aspect * vux, f/aspect * fwx, 0,
+        f * ruy, f * vuy, f * fwy, 0,
+        (far+near)/(near-far) * ruz + tx*2*far*near/(near-far)/tz,
+        (far+near)/(near-far) * vuz + ty*2*far*near/(near-far)/tz,
+        (far+near)/(near-far) * fwz - 1,
+        -1,
+        2*far*near/(near-far) * ruz/tz * tx + rux*tx + ruy*ty + ruz*tz,
+        2*far*near/(near-far) * vuz/tz * ty + vux*tx + vuy*ty + vuz*tz,
+        2*far*near/(near-far),
+        0
+      ]);
+    }
+
+    // Simpler MVP: just use standard matrices
+    function buildMVPSimple(t) {
+      const camAng = t * 0.15;
+      const camY = 0.8 + 0.5 * Math.sin(t * 0.07);
+      const camD = 3.2;
+      const aspect = canvas.width / canvas.height;
+
+      // Camera pos
+      const eye = [camD * Math.cos(camAng), camY, camD * Math.sin(camAng)];
+      const target = [0, 0, 0];
+      const up = [0, 1, 0];
+
+      // lookAt
+      const zAxis = normalize(sub(eye, target));
+      const xAxis = normalize(cross(up, zAxis));
+      const yAxis = cross(zAxis, xAxis);
+
+      const view = [
+        xAxis[0], yAxis[0], zAxis[0], 0,
+        xAxis[1], yAxis[1], zAxis[1], 0,
+        xAxis[2], yAxis[2], zAxis[2], 0,
+        -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+      ];
+
+      // perspective (fov ~60deg to match 1.8 focal length)
+      const fovy = 2 * Math.atan(1/1.8);
+      const f = 1 / Math.tan(fovy / 2);
+      const near = 0.1, far = 20;
+      const proj = [
+        f/aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far+near)/(near-far), -1,
+        0, 0, 2*far*near/(near-far), 0
+      ];
+
+      return multiply4x4(proj, view);
+    }
+
+    function sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+    function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+    function normalize(v) { const l = Math.sqrt(dot(v,v)); return [v[0]/l, v[1]/l, v[2]/l]; }
+    function multiply4x4(a, b) {
+      const r = new Float32Array(16);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          r[j*4+i] = a[i]*b[j*4] + a[i+4]*b[j*4+1] + a[i+8]*b[j*4+2] + a[i+12]*b[j*4+3];
+        }
+      }
+      return r;
+    }
 
     // ── Uniform locations ────────────────────────────────────
     const sU = {
@@ -528,8 +809,10 @@
       pa:   gl.getUniformLocation(sceneProg, 'u_pa'),
       pb:   gl.getUniformLocation(sceneProg, 'u_pb'),
       pc:   gl.getUniformLocation(sceneProg, 'u_pc'),
-      pd:   gl.getUniformLocation(sceneProg, 'u_pd'),
-      sss:  gl.getUniformLocation(sceneProg, 'u_sss'),
+      pd:      gl.getUniformLocation(sceneProg, 'u_pd'),
+      sss:     gl.getUniformLocation(sceneProg, 'u_sss'),
+      bailout: gl.getUniformLocation(sceneProg, 'u_bailout'),
+      trap:    gl.getUniformLocation(sceneProg, 'u_trapType'),
     };
     const pU = {
       res:   gl.getUniformLocation(postProg, 'u_resolution'),
@@ -577,6 +860,8 @@
       gl.uniform3fv(sU.pc, curPal.c);
       gl.uniform3fv(sU.pd, curPal.d);
       gl.uniform1f(sU.sss, sssVal);
+      gl.uniform1f(sU.bailout, bailoutVal);
+      gl.uniform1f(sU.trap, trapTypeVal);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       // ── Pass 2: post → screen ───────────────────────────
@@ -592,6 +877,37 @@
       gl.uniform1f(pU.dof, dofVal);
       gl.uniform1f(pU.ca, caVal);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // ── Pass 3: particles (if enabled) ─────────────────────
+      if (particleCount > 0 && particlesInitialized) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);  // additive blending
+
+        gl.useProgram(particleProg);
+
+        // Bind particle buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER, particleBuf);
+
+        const stride = 7 * 4;  // 7 floats per particle
+        gl.enableVertexAttribArray(partA.pos);
+        gl.vertexAttribPointer(partA.pos, 3, gl.FLOAT, false, stride, 0);
+        gl.enableVertexAttribArray(partA.vel);
+        gl.vertexAttribPointer(partA.vel, 3, gl.FLOAT, false, stride, 12);
+        gl.enableVertexAttribArray(partA.birth);
+        gl.vertexAttribPointer(partA.birth, 1, gl.FLOAT, false, stride, 24);
+
+        // Set uniforms
+        const mvp = buildMVPSimple(accTime);
+        gl.uniformMatrix4fv(partU.mvp, false, mvp);
+        gl.uniform1f(partU.time, accTime);
+        gl.uniform1f(partU.lifetime, PARTICLE_LIFETIME);
+        gl.uniform3f(partU.color, curPal.a[0] + 0.3, curPal.a[1] + 0.2, curPal.a[2] + 0.1);
+
+        // Draw particles
+        gl.drawArrays(gl.POINTS, 0, Math.min(particleCount, MAX_PARTICLES));
+
+        gl.disable(gl.BLEND);
+      }
 
       requestAnimationFrame(render);
     }

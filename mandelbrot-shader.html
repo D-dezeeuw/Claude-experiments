@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot GLSL Shader</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <canvas id="glCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+    if (!gl) {
+      document.body.innerHTML = '<p style="color:#fff;padding:2em;">WebGL not supported.</p>';
+      throw new Error('WebGL not supported');
+    }
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Vertex Shader ---
+    const vertSrc = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    // --- Fragment Shader ---
+    const fragSrc = `
+      precision highp float;
+
+      uniform vec2 u_resolution;
+      uniform float u_time;
+
+      // --- Smooth color palette ---
+      vec3 palette(float t) {
+        // Deep purple -> fiery orange -> pale gold
+        vec3 a = vec3(0.30, 0.10, 0.40);  // base: dark purple
+        vec3 b = vec3(0.60, 0.40, 0.30);  // amplitude
+        vec3 c = vec3(1.00, 0.80, 0.60);  // frequency
+        vec3 d = vec3(0.00, 0.15, 0.55);  // phase
+        return a + b * cos(6.28318 * (c * t + d));
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+
+        // --- Smooth, slow wandering zoom path ---
+        // The camera slowly spirals into interesting regions of the Mandelbrot set
+        float t = u_time * 0.012;   // very slow time scale
+
+        // Zoom: exponential zoom that breathes in & out
+        float zoomCycle = sin(t * 0.3) * 0.5 + 0.5;        // 0..1 oscillation
+        float zoom = pow(2.0, 1.0 + zoomCycle * 14.0);      // 2x .. 16384x
+
+        // Center wanders around the Misiurewicz point near (-0.743643887, 0.131825905)
+        // with gentle circular/lissajous drift
+        float cx = -0.743643887 + 0.002 * sin(t * 0.47) / (1.0 + zoomCycle * 4.0);
+        float cy =  0.131825905 + 0.002 * cos(t * 0.53) / (1.0 + zoomCycle * 4.0);
+
+        // Map screen coords to fractal coords
+        float fx = uv.x / zoom + cx;
+        float fy = uv.y / zoom + cy;
+
+        // --- Mandelbrot iteration with smooth escape ---
+        float x = 0.0;
+        float y = 0.0;
+        float x2 = 0.0;
+        float y2 = 0.0;
+        const int MAX_ITER = 512;
+        int iter = MAX_ITER;
+        float escape = 256.0;  // large bailout for smooth coloring
+
+        for (int i = 0; i < 512; i++) {
+          if (x2 + y2 > escape) {
+            iter = i;
+            break;
+          }
+          y = 2.0 * x * y + fy;
+          x = x2 - y2 + fx;
+          x2 = x * x;
+          y2 = y * y;
+        }
+
+        // --- Color computation ---
+        vec3 col;
+        if (iter == MAX_ITER) {
+          // Interior: deep dark purple-black
+          col = vec3(0.02, 0.0, 0.05);
+        } else {
+          // Smooth iteration count (normalized)
+          float sl = float(iter) - log2(log2(x2 + y2)) + 4.0;
+          float smoothVal = sl / float(MAX_ITER);
+
+          // Create layered color using palette with time shift for subtle animation
+          float colorIdx = sqrt(smoothVal) * 4.0 + u_time * 0.005;
+          col = palette(colorIdx);
+
+          // Add glow near the boundary
+          float glow = exp(-smoothVal * 8.0);
+          col += vec3(0.6, 0.2, 0.0) * glow * 0.4;
+
+          // Boost contrast with a subtle S-curve
+          col = pow(col, vec3(0.85));
+        }
+
+        // Light vignette
+        float vig = 1.0 - 0.3 * length(uv);
+        col *= vig;
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    // --- Compile shader ---
+    function compileShader(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
+
+    const vertShader = compileShader(gl.VERTEX_SHADER, vertSrc);
+    const fragShader = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+    }
+    gl.useProgram(program);
+
+    // --- Full-screen quad ---
+    const verts = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+    const aPos = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    // --- Uniforms ---
+    const uRes = gl.getUniformLocation(program, 'u_resolution');
+    const uTime = gl.getUniformLocation(program, 'u_time');
+
+    // --- Render loop ---
+    function render(now) {
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, now * 0.001);   // seconds
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

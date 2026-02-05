@@ -14,6 +14,16 @@
       left: 50%;
       transform: translateX(-50%);
       display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      z-index: 10;
+      user-select: none;
+      transition: opacity 0.4s;
+    }
+    .controls:hover { opacity: 1 !important; }
+    .controls-row {
+      display: flex;
       align-items: center;
       gap: 0.75rem;
       background: rgba(10, 8, 20, 0.65);
@@ -22,11 +32,8 @@
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 12px;
       padding: 0.6rem 1.25rem;
-      z-index: 10;
-      user-select: none;
-      transition: opacity 0.4s;
     }
-    .controls:hover { opacity: 1 !important; }
+    input[type="range"].fx { width: 80px; }
     .controls label {
       color: rgba(255,255,255,0.5);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
@@ -89,14 +96,33 @@
   <canvas id="glCanvas"></canvas>
 
   <div class="controls" id="controls">
-    <label>SPEED</label>
-    <label class="val" id="speedLabel">0.50</label>
-    <input type="range" id="speedSlider" min="-100" max="100" value="50" step="1">
-    <span class="sep"></span>
-    <label class="val" id="palLabel">EMBER</label>
-    <label class="hint"><kbd>1-5</kbd> palette</label>
-    <span class="sep"></span>
-    <label class="hint"><kbd>S</kbd> save</label>
+    <div class="controls-row">
+      <label>SPEED</label>
+      <label class="val" id="speedLabel">0.50</label>
+      <input type="range" id="speedSlider" min="-100" max="100" value="50" step="1">
+      <span class="sep"></span>
+      <label class="val" id="palLabel">EMBER</label>
+      <label class="hint"><kbd>1-5</kbd> palette</label>
+      <span class="sep"></span>
+      <label class="hint"><kbd>S</kbd> save</label>
+    </div>
+    <div class="controls-row">
+      <label>SSS</label>
+      <label class="val" id="sssLabel">30</label>
+      <input type="range" class="fx" id="sssSlider" min="0" max="100" value="30" step="1">
+      <span class="sep"></span>
+      <label>BLOOM</label>
+      <label class="val" id="bloomLabel">50</label>
+      <input type="range" class="fx" id="bloomSlider" min="0" max="100" value="50" step="1">
+      <span class="sep"></span>
+      <label>DOF</label>
+      <label class="val" id="dofLabel">60</label>
+      <input type="range" class="fx" id="dofSlider" min="0" max="100" value="60" step="1">
+      <span class="sep"></span>
+      <label>CA</label>
+      <label class="val" id="caLabel">40</label>
+      <input type="range" class="fx" id="caSlider" min="0" max="100" value="40" step="1">
+    </div>
   </div>
 
   <script>
@@ -154,6 +180,39 @@
     slider.addEventListener('input', () => {
       speed = parseInt(slider.value, 10) / 100;
       speedLbl.textContent = speed.toFixed(2);
+    });
+
+    // ── Effect sliders ────────────────────────────────────────
+    let sssVal = 0.30, bloomVal = 1.80, dofVal = 6.0, caVal = 0.004;
+
+    const sssSlider   = document.getElementById('sssSlider');
+    const bloomSlider = document.getElementById('bloomSlider');
+    const dofSlider   = document.getElementById('dofSlider');
+    const caSlider    = document.getElementById('caSlider');
+    const sssLbl      = document.getElementById('sssLabel');
+    const bloomLbl    = document.getElementById('bloomLabel');
+    const dofLbl      = document.getElementById('dofLabel');
+    const caLbl       = document.getElementById('caLabel');
+
+    sssSlider.addEventListener('input', () => {
+      const v = parseInt(sssSlider.value, 10);
+      sssVal = v / 100;
+      sssLbl.textContent = v;
+    });
+    bloomSlider.addEventListener('input', () => {
+      const v = parseInt(bloomSlider.value, 10);
+      bloomVal = v / 100 * 3.6;
+      bloomLbl.textContent = v;
+    });
+    dofSlider.addEventListener('input', () => {
+      const v = parseInt(dofSlider.value, 10);
+      dofVal = v / 100 * 10.0;
+      dofLbl.textContent = v;
+    });
+    caSlider.addEventListener('input', () => {
+      const v = parseInt(caSlider.value, 10);
+      caVal = v / 100 * 0.01;
+      caLbl.textContent = v;
     });
 
     // ── Auto-fade controls ───────────────────────────────────
@@ -230,6 +289,7 @@
       uniform vec3  u_pb;
       uniform vec3  u_pc;
       uniform vec3  u_pd;
+      uniform float u_sss;
 
       vec3 palette(float t) {
         return u_pa + u_pb * cos(6.28318 * (u_pc * t + u_pd));
@@ -340,7 +400,7 @@
           }
           sss *= 0.25;
           sss *= sss;
-          col += palette(trap * 0.15 + 0.05) * sss * 0.30 * (1.0 - fresnel*0.5);
+          col += palette(trap * 0.15 + 0.05) * sss * u_sss * (1.0 - fresnel*0.5);
 
           // Contrast
           col = pow(col, vec3(0.85));
@@ -365,6 +425,9 @@
 
       uniform sampler2D u_scene;
       uniform vec2 u_resolution;
+      uniform float u_bloom;
+      uniform float u_dof;
+      uniform float u_ca;
 
       void main() {
         vec2 uv = gl_FragCoord.xy / u_resolution;
@@ -374,7 +437,7 @@
         // ── Depth of Field ──────────────────────────────────
         // Focal plane at ~camera-to-bulb surface distance
         float focalDist = 0.38;
-        float aperture  = 6.0;
+        float aperture  = u_dof;
         float coc = clamp(abs(depth - focalDist) * aperture, 0.0, 0.025);
 
         // Golden-angle disc blur
@@ -399,12 +462,12 @@
         }
         bloom /= 12.0;
 
-        vec3 col = dof + bloom * 1.8;
+        vec3 col = dof + bloom * u_bloom;
 
         // ── Chromatic aberration ────────────────────────────
         // Radial offset, stronger toward edges (simulates lens)
         vec2 center = uv - 0.5;
-        float ca = 0.004 * length(center);
+        float ca = u_ca * length(center);
         col.r = mix(col.r, texture2D(u_scene, uv + center*ca).r, 0.55);
         col.b = mix(col.b, texture2D(u_scene, uv - center*ca).b, 0.55);
 
@@ -453,10 +516,14 @@
       pb:   gl.getUniformLocation(sceneProg, 'u_pb'),
       pc:   gl.getUniformLocation(sceneProg, 'u_pc'),
       pd:   gl.getUniformLocation(sceneProg, 'u_pd'),
+      sss:  gl.getUniformLocation(sceneProg, 'u_sss'),
     };
     const pU = {
       res:   gl.getUniformLocation(postProg, 'u_resolution'),
       scene: gl.getUniformLocation(postProg, 'u_scene'),
+      bloom: gl.getUniformLocation(postProg, 'u_bloom'),
+      dof:   gl.getUniformLocation(postProg, 'u_dof'),
+      ca:    gl.getUniformLocation(postProg, 'u_ca'),
     };
 
     // ── Fullscreen quad (shared) ─────────────────────────────
@@ -496,6 +563,7 @@
       gl.uniform3fv(sU.pb, curPal.b);
       gl.uniform3fv(sU.pc, curPal.c);
       gl.uniform3fv(sU.pd, curPal.d);
+      gl.uniform1f(sU.sss, sssVal);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       // ── Pass 2: post → screen ───────────────────────────
@@ -507,6 +575,9 @@
       gl.bindTexture(gl.TEXTURE_2D, sceneTex);
       gl.uniform1i(pU.scene, 0);
       gl.uniform2f(pU.res, canvas.width, canvas.height);
+      gl.uniform1f(pU.bloom, bloomVal);
+      gl.uniform1f(pU.dof, dofVal);
+      gl.uniform1f(pU.ca, caVal);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       requestAnimationFrame(render);

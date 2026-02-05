@@ -435,20 +435,31 @@
         float depth = raw.a;
 
         // ── Depth of Field ──────────────────────────────────
-        // Focal plane at ~camera-to-bulb surface distance
-        float focalDist = 0.27;
-        float aperture  = u_dof * 20.0;
-        float coc = clamp(abs(depth - focalDist) * aperture, 0.0, 0.06);
+        // Based on circle of confusion with gentle falloff
+        // Focus is at the Mandelbulb surface (~depth 0.27)
+        float focalDepth = 0.27;
 
-        // Golden-angle disc blur
+        // Gentle blur scaling: slider 0-100 maps to 0-0.5 blur factor
+        float blurFactor = u_dof * 0.5;
+
+        // Circle of confusion grows with distance from focal plane
+        float coc = abs(depth - focalDepth) * blurFactor;
+
+        // Emphasize background blur (depth > focus), reduce foreground
+        coc *= (depth > focalDepth) ? 1.3 : 0.7;
+
+        // Clamp to reasonable max (5% of screen)
+        coc = min(coc, 0.05);
+
+        // Disc blur using golden angle spiral (22 samples for quality)
         vec3 dof = vec3(0.0);
-        for (int i = 0; i < 16; i++) {
-          float a = float(i) * 2.39996;
-          float r = sqrt(float(i + 1) / 16.0) * coc;
-          vec2 off = vec2(cos(a), sin(a)) * r;
+        for (int i = 0; i < 22; i++) {
+          float ang = float(i) * 2.39996322;
+          float rad = sqrt((float(i) + 0.5) / 22.0) * coc;
+          vec2 off = vec2(cos(ang), sin(ang)) * rad;
           dof += texture2D(u_scene, uv + off).rgb;
         }
-        dof /= 16.0;
+        dof /= 22.0;
 
         // ── Bloom ───────────────────────────────────────────
         // Fixed-radius disc sampling, extract brights

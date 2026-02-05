@@ -1,3 +1,68 @@
+<!--
+  ============================================================
+  TODO — Future Upgrades
+  ============================================================
+
+  GEOMETRY & SHAPES
+  [ ] Hybrid fractals — mix Mandelbulb iterations with box-folding
+      (Mandelbox) transforms mid-loop. Part organic, part architectural.
+  [ ] Kaleidoscopic IFS — iterated mirror folds before each iteration
+      step. Produces cathedral-like infinite corridors and crystal lattices.
+  [ ] Mandelbox — sharp, angular, city-like recursion with infinite
+      interior rooms. Good contrast piece next to the organic Mandelbulb.
+  [ ] Cross-section slicer — animated clipping plane cutting through the
+      Mandelbulb revealing interior structure. max(sdf, plane) in scene fn.
+  [ ] Power integer walk — step through integer powers (2→12) with smooth
+      interpolation. Each integer produces a distinct shape.
+  [ ] Quaternion Julia sets — 4D fractal sliced to 3D. Organic/coral-like
+      forms. Same raymarching setup, different DE.
+
+  INTERACTION
+  [ ] Mouse orbit — click-drag to rotate camera. Store azimuth/elevation,
+      blend with auto-orbit when idle.
+  [ ] Scroll zoom — mouse wheel moves camera closer/further with clamping.
+  [ ] Parameter sliders panel — expose power, separation, smooth-min k,
+      and light direction as live sliders.
+  [ ] Touch + gyroscope — DeviceOrientationEvent to steer camera by
+      tilting the phone on mobile.
+  [ ] Fullscreen + screenshot — double-click for fullscreen, press S to
+      save current frame as PNG via canvas.toBlob().
+
+  VISUAL UPGRADES
+  [ ] Soft shadows — secondary short-range raymarch toward light for
+      dramatic self-shadowing in crevices (~30 extra steps, hit pixels only).
+  [ ] Glow / bloom — post-process pass: render to texture, blur bright
+      areas, composite. Needs second framebuffer.
+  [ ] Subsurface scattering fake — march a few steps into the surface
+      along the light direction. Thinner regions glow warmer (wax/jade feel).
+  [ ] Environment reflection — reflect ray off normal, sample a procedural
+      sky gradient or starfield for polished/metallic surface.
+  [ ] Depth of field — accumulate multiple frames with jittered ray origins
+      around a focal plane. Needs temporal accumulation buffer.
+  [ ] Palette presets — cycle with key press: orange/purple, ice blue/white,
+      molten red/gold, monochrome noir, radioactive green.
+  [ ] Chromatic aberration — offset R/G/B channels slightly in screen space.
+
+  ANIMATION & DYNAMICS
+  [ ] Fractal explosion — animate bailout radius from 2.0 down to 0.5 and
+      back. Surface shatters into fragments, then reforms.
+  [ ] Morph between fractal types — blend DE of Mandelbulb and Mandelbox
+      with a mix parameter for smooth organic-to-geometric transition.
+  [ ] Orbit trap variety — swap trap geometry: point, line, plane, sphere.
+      Each produces different color patterns. Animate between them.
+  [ ] Particle system — emit GL_POINTS from fractal surface that drift
+      outward. Separate draw call with texture-based particle sim.
+
+  AUDIO
+  [ ] Microphone reactive — getUserMedia + AnalyserNode FFT driving power,
+      separation, and color shift. Fractal pulses and morphs to sound.
+  [ ] Music visualizer mode — audio file or stream input. Low frequencies
+      drive zoom/power, highs drive color.
+  [ ] Procedural ambient — Web Audio oscillators generating a slow evolving
+      drone tied to fractal state. Sound and image as one system.
+
+  ============================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>

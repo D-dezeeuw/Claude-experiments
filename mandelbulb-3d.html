@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbulb 3D Shader</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .controls {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: rgba(10, 8, 20, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 0.6rem 1.25rem;
+      z-index: 10;
+      user-select: none;
+      transition: opacity 0.4s;
+    }
+    .controls:hover { opacity: 1 !important; }
+    .controls label {
+      color: rgba(255,255,255,0.5);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .controls .val {
+      color: rgba(255,255,255,0.85);
+      font-variant-numeric: tabular-nums;
+      min-width: 3.2em;
+      text-align: center;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 160px;
+      height: 4px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glCanvas"></canvas>
+
+  <div class="controls" id="controls">
+    <label>SPEED</label>
+    <label class="val" id="speedLabel">0.50</label>
+    <input type="range" id="speedSlider" min="-100" max="100" value="50" step="1">
+  </div>
+
+  <script>
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+    if (!gl) {
+      document.body.innerHTML = '<p style="color:#fff;padding:2em;">WebGL not supported.</p>';
+      throw new Error('WebGL not supported');
+    }
+
+    function resize() {
+      // Cap DPR at 1.5 — the raymarcher is heavy
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Speed slider ---
+    const slider = document.getElementById('speedSlider');
+    const speedLabel = document.getElementById('speedLabel');
+    const controlsEl = document.getElementById('controls');
+    let speed = 0.5;
+
+    slider.addEventListener('input', () => {
+      speed = parseInt(slider.value, 10) / 100;
+      speedLabel.textContent = speed.toFixed(2);
+    });
+
+    // Auto-fade controls
+    let fadeTimer;
+    function showControls() {
+      controlsEl.style.opacity = '1';
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(() => { controlsEl.style.opacity = '0.35'; }, 3000);
+    }
+    document.addEventListener('mousemove', showControls);
+    document.addEventListener('touchstart', showControls);
+    showControls();
+
+    // --- Accumulated time ---
+    let accTime = 0;
+    let lastNow = 0;
+
+    // --- Vertex Shader ---
+    const vertSrc = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    // --- Fragment Shader: Raymarched dual Mandelbulb ---
+    const fragSrc = `
+      precision highp float;
+
+      uniform vec2 u_resolution;
+      uniform float u_time;
+
+      // ── Orange / purple palette ─────────────────────────────
+      vec3 palette(float t) {
+        vec3 a = vec3(0.30, 0.10, 0.40);
+        vec3 b = vec3(0.60, 0.40, 0.30);
+        vec3 c = vec3(1.00, 0.80, 0.60);
+        vec3 d = vec3(0.00, 0.15, 0.55);
+        return a + b * cos(6.28318 * (c * t + d));
+      }
+
+      // ── Mandelbulb distance estimator ───────────────────────
+      // Returns vec2(distance, orbit_trap) for surface coloring.
+      // power controls the bulb order (classic = 8).
+      vec2 mandelbulbDE(vec3 pos, float power) {
+        vec3 z = pos;
+        float dr = 1.0;
+        float r = 0.0;
+        float trap = 1e10;
+
+        for (int i = 0; i < 8; i++) {
+          r = length(z);
+          if (r > 2.0) break;
+
+          // Spherical coordinates
+          float theta = acos(clamp(z.z / r, -1.0, 1.0));
+          float phi   = atan(z.y, z.x);
+
+          // Running derivative
+          dr = pow(r, power - 1.0) * power * dr + 1.0;
+
+          // Raise to power in spherical, convert back
+          float zr = pow(r, power);
+          theta *= power;
+          phi   *= power;
+
+          z = zr * vec3(sin(theta) * cos(phi),
+                        sin(theta) * sin(phi),
+                        cos(theta));
+          z += pos;
+
+          trap = min(trap, length(z));
+        }
+
+        r = max(r, 1e-10);
+        return vec2(0.5 * log(r) * r / dr, trap);
+      }
+
+      // ── Scene: two Mandelbulbs merging ──────────────────────
+      // Smooth-minimum union creates organic flowing geometry
+      // where the two forms meet.
+      vec2 scene(vec3 p, float t) {
+        // Power morphs over time: lobes grow and recede
+        float power = 7.0 + sin(t * 0.08) * 2.0;
+
+        // Two bulbs orbit each other with varying separation
+        float sep = 0.65 + 0.3 * sin(t * 0.12);
+        float orbAngle = t * 0.1;
+        vec3 offset = vec3(sep * cos(orbAngle),
+                           sep * 0.3 * sin(orbAngle * 1.3),
+                           sep * sin(orbAngle));
+
+        vec2 d1 = mandelbulbDE(p - offset, power);
+        vec2 d2 = mandelbulbDE(p + offset, power + 0.5);
+
+        // Smooth minimum (polynomial)
+        float k = 0.35;
+        float h = clamp(0.5 + 0.5 * (d1.x - d2.x) / k, 0.0, 1.0);
+        float dist = mix(d1.x, d2.x, h) - k * h * (1.0 - h);
+        float trapVal = mix(d1.y, d2.y, h);
+
+        return vec2(dist, trapVal);
+      }
+
+      // ── Normal via tetrahedron technique (4 samples) ────────
+      vec3 calcNormal(vec3 p, float t) {
+        vec2 e = vec2(1.0, -1.0) * 0.0005;
+        return normalize(
+          e.xyy * scene(p + e.xyy, t).x +
+          e.yyx * scene(p + e.yyx, t).x +
+          e.yxy * scene(p + e.yxy, t).x +
+          e.xxx * scene(p + e.xxx, t).x
+        );
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution)
+                 / min(u_resolution.x, u_resolution.y);
+        float t = u_time;
+
+        // ── Camera: orbiting with gentle vertical bob ─────────
+        float camAngle  = t * 0.15;
+        float camHeight = 0.8 + 0.5 * sin(t * 0.07);
+        float camDist   = 3.2;
+
+        vec3 ro = vec3(camDist * cos(camAngle),
+                       camHeight,
+                       camDist * sin(camAngle));
+        vec3 ta = vec3(0.0);
+
+        // Camera matrix (look-at)
+        vec3 ww = normalize(ta - ro);
+        vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+        vec3 vv = cross(uu, ww);
+        vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.8 * ww);
+
+        // ── Raymarch ──────────────────────────────────────────
+        float totalDist = 0.0;
+        float trapVal   = 0.0;
+        float hit       = 0.0;
+        float steps     = 0.0;
+
+        for (int i = 0; i < 64; i++) {
+          vec3 p = ro + rd * totalDist;
+          vec2 res = scene(p, t);
+
+          if (res.x < 0.001) {
+            hit = 1.0;
+            trapVal = res.y;
+            break;
+          }
+          if (totalDist > 8.0) break;
+
+          totalDist += res.x;
+          trapVal = res.y;
+          steps += 1.0;
+        }
+
+        // ── Shading ───────────────────────────────────────────
+        vec3 col;
+
+        if (hit > 0.5) {
+          vec3 p = ro + rd * totalDist;
+          vec3 n = calcNormal(p, t);
+
+          // Key light (warm, from upper-right)
+          vec3 lDir = normalize(vec3(0.8, 1.0, -0.3));
+          float diff = max(dot(n, lDir), 0.0);
+          float spec = pow(max(dot(reflect(-lDir, n), -rd), 0.0), 24.0);
+
+          // Fill light (cool purple, from below-left)
+          float fill = max(dot(n, normalize(vec3(-0.5, -0.3, 0.8))), 0.0);
+
+          // Ambient occlusion from step count
+          float ao = 1.0 - steps / 64.0;
+          ao *= ao;
+
+          // Material color from orbit trap
+          vec3 matCol = palette(trapVal * 0.4 + t * 0.015);
+
+          // Fresnel rim glow
+          float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+
+          col  = matCol * (0.12 + 0.65 * diff + 0.25 * fill) * ao;
+          col += vec3(1.0, 0.7, 0.3) * spec * 0.6;           // warm spec
+          col += vec3(0.45, 0.12, 0.55) * fresnel * 0.35;     // purple rim
+        } else {
+          // Background: dark purple gradient
+          col = vec3(0.02, 0.005, 0.05)
+              + vec3(0.03, 0.01, 0.06) * (0.5 + 0.5 * uv.y);
+        }
+
+        // Distance fog (blends to dark purple)
+        float fog = exp(-totalDist * 0.25);
+        col = mix(vec3(0.03, 0.01, 0.06), col, fog);
+
+        // Vignette
+        float vig = 1.0 - 0.3 * length(uv);
+        col *= vig;
+
+        // Gamma
+        col = pow(col, vec3(0.4545));
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    // --- Compile shader ---
+    function compileShader(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
+
+    const vertShader = compileShader(gl.VERTEX_SHADER, vertSrc);
+    const fragShader = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+    }
+    gl.useProgram(program);
+
+    // --- Full-screen quad ---
+    const verts = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+    const aPos = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    // --- Uniforms ---
+    const uRes = gl.getUniformLocation(program, 'u_resolution');
+    const uTime = gl.getUniformLocation(program, 'u_time');
+
+    // --- Render loop ---
+    function render(now) {
+      const nowSec = now * 0.001;
+      const dt = lastNow === 0 ? 0 : nowSec - lastNow;
+      lastNow = nowSec;
+
+      accTime += dt * speed;
+
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, accTime);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

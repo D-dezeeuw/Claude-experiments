@@ -1,83 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Map of Gran Canaria</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-            background: #000;
-        }
-
-        #container {
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 5px;
-            font-size: 14px;
-            max-width: 300px;
-            z-index: 100;
-        }
-
-        #info h1 {
-            font-size: 20px;
-            margin-bottom: 10px;
-        }
-
-        #info p {
-            margin: 5px 0;
-            line-height: 1.5;
-        }
-
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px 40px;
-            border-radius: 10px;
-            display: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Experiments</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d0d1a;
+      color: #e0dfe6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4rem 1.5rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    p.subtitle {
+      color: #9a96b0;
+      margin-bottom: 3rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      max-width: 720px;
+      width: 100%;
+    }
+    .card {
+      background: #16162a;
+      border: 1px solid #2a2a44;
+      border-radius: 12px;
+      padding: 1.75rem;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: #c96d30;
+      transform: translateY(-3px);
+    }
+    .card h2 {
+      font-size: 1.15rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: #8886a0;
+      line-height: 1.5;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      margin-top: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tag-webgl  { background: #1e2a1e; color: #6fcf6f; }
+    .tag-shader { background: #2a1e2a; color: #cf6fcf; }
+    .tag-threejs { background: #1e222a; color: #6fa0cf; }
+  </style>
 </head>
 <body>
-    <div id="container"></div>
-    <div id="info">
-        <h1>Gran Canaria 3D Terrain Map</h1>
-        <p><strong>Controls:</strong></p>
-        <p>• Left Mouse: Rotate camera</p>
-        <p>• Right Mouse: Pan</p>
-        <p>• Scroll: Zoom in/out</p>
-        <p><strong>Peak:</strong> Pico de las Nieves (1,949m)</p>
-    </div>
-    <div id="loading">Loading terrain...</div>
-
-    <!-- Three.js from CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-    <!-- OrbitControls for camera interaction -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-    <!-- Main application script -->
-    <script src="js/main.js"></script>
+  <h1>Claude Experiments</h1>
+  <p class="subtitle">WebGL and shader experiments</p>
+  <div class="grid">
+    <a class="card" href="mandelbrot-shader.html">
+      <h2>Mandelbrot Shader</h2>
+      <p>Procedural GLSL fragment shader rendering an animated Mandelbrot fractal with smooth zoom and orange-purple palette.</p>
+      <span class="tag tag-webgl">WebGL</span>
+      <span class="tag tag-shader">GLSL</span>
+    </a>
+    <a class="card" href="gran-canaria.html">
+      <h2>Gran Canaria 3D Map</h2>
+      <p>Interactive 3D terrain map of Gran Canaria with procedural height data and orbit controls.</p>
+      <span class="tag tag-webgl">WebGL</span>
+      <span class="tag tag-threejs">Three.js</span>
+    </a>
+  </div>
 </body>
 </html>

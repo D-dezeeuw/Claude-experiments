@@ -132,6 +132,10 @@
       <label class="val" id="trapLabel">POINT</label>
       <input type="range" class="fx" id="trapSlider" min="0" max="400" value="0" step="1">
       <span class="sep"></span>
+      <label>MORPH</label>
+      <label class="val" id="morphLabel">BULB</label>
+      <input type="range" class="fx" id="morphSlider" min="0" max="100" value="0" step="1">
+      <span class="sep"></span>
       <label>PARTICLES</label>
       <label class="val" id="particleLabel">OFF</label>
       <input type="range" class="fx" id="particleSlider" min="0" max="100" value="0" step="1">
@@ -228,15 +232,17 @@
       caLbl.textContent = v;
     });
 
-    // ── Animation sliders (explode, trap, particles) ──────────
-    let bailoutVal = 2.0, trapTypeVal = 0.0, particleCount = 0;
+    // ── Animation sliders (explode, trap, morph, particles) ────
+    let bailoutVal = 2.0, trapTypeVal = 0.0, morphVal = 0.0, particleCount = 0;
     const trapNames = ['POINT', 'LINE-X', 'LINE-Y', 'PLANE', 'SPHERE'];
 
     const explodeSlider  = document.getElementById('explodeSlider');
     const trapSlider     = document.getElementById('trapSlider');
+    const morphSlider    = document.getElementById('morphSlider');
     const particleSlider = document.getElementById('particleSlider');
     const explodeLbl     = document.getElementById('explodeLabel');
     const trapLbl        = document.getElementById('trapLabel');
+    const morphLbl       = document.getElementById('morphLabel');
     const particleLbl    = document.getElementById('particleLabel');
 
     explodeSlider.addEventListener('input', () => {
@@ -249,6 +255,13 @@
       trapTypeVal = v / 100;  // 0-400 → 0.0-4.0
       const idx = Math.min(Math.floor(trapTypeVal), 4);
       trapLbl.textContent = trapNames[idx];
+    });
+    morphSlider.addEventListener('input', () => {
+      const v = parseInt(morphSlider.value, 10);
+      morphVal = v / 100;  // 0-100 → 0.0-1.0
+      if (v < 33) morphLbl.textContent = 'BULB';
+      else if (v < 67) morphLbl.textContent = 'HYBRID';
+      else morphLbl.textContent = 'BOX';
     });
     particleSlider.addEventListener('input', () => {
       const v = parseInt(particleSlider.value, 10);
@@ -334,6 +347,7 @@
       uniform float u_sss;
       uniform float u_bailout;
       uniform float u_trapType;
+      uniform float u_morph;
 
       vec3 palette(float t) {
         return u_pa + u_pb * cos(6.28318 * (u_pc * t + u_pd));
@@ -382,15 +396,66 @@
         return vec2(0.5 * log(r) * r / dr, trap);
       }
 
-      // ── Scene: two Mandelbulbs smooth-unioned ─────────────
+      // ── Mandelbox distance estimator ──────────────────────
+      vec2 mandelboxDE(vec3 pos, float scale) {
+        vec3 z = pos;
+        float dr = 1.0;
+        float trap = 1e10;
+        float fixedRadius2 = 1.0;
+        float minRadius2 = 0.25;
+
+        for (int i = 0; i < 12; i++) {
+          // Box fold
+          z = clamp(z, -1.0, 1.0) * 2.0 - z;
+
+          // Sphere fold
+          float r2 = dot(z, z);
+          if (r2 < minRadius2) {
+            float t = fixedRadius2 / minRadius2;
+            z *= t;
+            dr *= t;
+          } else if (r2 < fixedRadius2) {
+            float t = fixedRadius2 / r2;
+            z *= t;
+            dr *= t;
+          }
+
+          z = scale * z + pos;
+          dr = dr * abs(scale) + 1.0;
+          trap = min(trap, calcTrap(z));
+        }
+        return vec2(length(z) / abs(dr), trap);
+      }
+
+      // ── Scene: morphable dual fractals ─────────────────────
       vec2 scene(vec3 p, float t) {
         float power = 7.0 + sin(t * 0.08) * 2.0;
+        float scale = -2.0 + sin(t * 0.06) * 0.5;  // Mandelbox scale
         float sep = 0.65 + 0.3 * sin(t * 0.12);
         float orb = t * 0.1;
         vec3 off = vec3(sep*cos(orb), sep*0.3*sin(orb*1.3), sep*sin(orb));
 
-        vec2 d1 = mandelbulbDE(p - off, power);
-        vec2 d2 = mandelbulbDE(p + off, power + 0.5);
+        // Morph between Mandelbulb and Mandelbox
+        vec2 d1, d2;
+        if (u_morph < 0.5) {
+          // Pure Mandelbulb or blending toward box
+          vec2 bulb1 = mandelbulbDE(p - off, power);
+          vec2 bulb2 = mandelbulbDE(p + off, power + 0.5);
+          vec2 box1  = mandelboxDE((p - off) * 0.8, scale);
+          vec2 box2  = mandelboxDE((p + off) * 0.8, scale);
+          float m = u_morph * 2.0;
+          d1 = vec2(mix(bulb1.x, box1.x, m), mix(bulb1.y, box1.y, m));
+          d2 = vec2(mix(bulb2.x, box2.x, m), mix(bulb2.y, box2.y, m));
+        } else {
+          // Blending toward box or pure Mandelbox
+          vec2 bulb1 = mandelbulbDE(p - off, power);
+          vec2 bulb2 = mandelbulbDE(p + off, power + 0.5);
+          vec2 box1  = mandelboxDE((p - off) * 0.8, scale);
+          vec2 box2  = mandelboxDE((p + off) * 0.8, scale);
+          float m = (u_morph - 0.5) * 2.0;
+          d1 = vec2(mix(bulb1.x, box1.x, 0.5 + m * 0.5), mix(bulb1.y, box1.y, 0.5 + m * 0.5));
+          d2 = vec2(mix(box2.x, box2.x, m), mix(bulb2.y, box2.y, 0.5 + m * 0.5));
+        }
 
         float k = 0.35;
         float h = clamp(0.5 + 0.5*(d1.x - d2.x)/k, 0.0, 1.0);
@@ -446,12 +511,18 @@
           float ao = 1.0 - steps / 64.0;
           ao *= ao;
 
-          vec3 matCol  = palette(trap * 0.4 + t * 0.015);
+          // Enhanced orbit trap coloring - more dramatic effect
+          vec3 matCol  = palette(trap * 1.5 + t * 0.015);
+          vec3 matCol2 = palette(trap * 2.5 + 0.5);  // secondary color from trap
           float fresnel = pow(1.0 - max(dot(n,-rd), 0.0), 3.0);
 
-          col  = matCol * (0.12 + 0.65*diff + 0.25*fill) * ao;
+          // Blend between two trap-derived colors for richer variation
+          float trapBlend = smoothstep(0.2, 0.8, fract(trap * 3.0));
+          vec3 finalMat = mix(matCol, matCol2, trapBlend * 0.4);
+
+          col  = finalMat * (0.12 + 0.65*diff + 0.25*fill) * ao;
           col += vec3(1.0,0.7,0.3) * spec * 0.6;
-          col += palette(0.65) * fresnel * 0.30;
+          col += palette(trap * 0.8 + 0.3) * fresnel * 0.35;
 
           // ── SSS approximation ─────────────────────────────
           // March along light dir; compare DE to expected distance.
@@ -813,6 +884,7 @@
       sss:     gl.getUniformLocation(sceneProg, 'u_sss'),
       bailout: gl.getUniformLocation(sceneProg, 'u_bailout'),
       trap:    gl.getUniformLocation(sceneProg, 'u_trapType'),
+      morph:   gl.getUniformLocation(sceneProg, 'u_morph'),
     };
     const pU = {
       res:   gl.getUniformLocation(postProg, 'u_resolution'),
@@ -862,6 +934,7 @@
       gl.uniform1f(sU.sss, sssVal);
       gl.uniform1f(sU.bailout, bailoutVal);
       gl.uniform1f(sU.trap, trapTypeVal);
+      gl.uniform1f(sU.morph, morphVal);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       // ── Pass 2: post → screen ───────────────────────────

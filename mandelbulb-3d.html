@@ -104,7 +104,7 @@
       <label class="val" id="palLabel">EMBER</label>
       <label class="hint"><kbd>1-5</kbd> palette</label>
       <span class="sep"></span>
-      <label class="hint"><kbd>S</kbd> save</label>
+      <label class="hint"><kbd>P</kbd> save</label>
       <span class="sep"></span>
       <label class="hint"><kbd>WASD</kbd> orbit <kbd>QE</kbd> zoom <kbd>SPACE</kbd> auto</label>
     </div>
@@ -365,8 +365,8 @@
         tarPal = palettes[idx];
         palLbl.textContent = tarPal.name;
       }
-      if (e.key === 's' || e.key === 'S') {
-        if (e.ctrlKey || e.metaKey) return;  // don't hijack Ctrl+S
+      if (e.key === 'p' || e.key === 'P') {
+        if (e.ctrlKey || e.metaKey) return;  // don't hijack Ctrl+P
         canvas.toBlob((blob) => {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);

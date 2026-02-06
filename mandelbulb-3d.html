@@ -114,16 +114,16 @@
       <input type="range" class="fx" id="sssSlider" min="0" max="100" value="30" step="1">
       <span class="sep"></span>
       <label>BLOOM</label>
-      <label class="val" id="bloomLabel">50</label>
-      <input type="range" class="fx" id="bloomSlider" min="0" max="100" value="50" step="1">
+      <label class="val" id="bloomLabel">0</label>
+      <input type="range" class="fx" id="bloomSlider" min="0" max="100" value="0" step="1">
       <span class="sep"></span>
       <label>DOF</label>
-      <label class="val" id="dofLabel">60</label>
-      <input type="range" class="fx" id="dofSlider" min="0" max="100" value="60" step="1">
+      <label class="val" id="dofLabel">0</label>
+      <input type="range" class="fx" id="dofSlider" min="0" max="100" value="0" step="1">
       <span class="sep"></span>
       <label>CA</label>
-      <label class="val" id="caLabel">40</label>
-      <input type="range" class="fx" id="caSlider" min="0" max="100" value="40" step="1">
+      <label class="val" id="caLabel">0</label>
+      <input type="range" class="fx" id="caSlider" min="0" max="100" value="0" step="1">
     </div>
     <div class="controls-row">
       <label>EXPLODE</label>
@@ -202,7 +202,7 @@
     });
 
     // ── Effect sliders ────────────────────────────────────────
-    let sssVal = 0.30, bloomVal = 0.50, dofVal = 0.60, caVal = 0.024;
+    let sssVal = 0.30, bloomVal = 0.0, dofVal = 0.0, caVal = 0.0;
 
     const sssSlider   = document.getElementById('sssSlider');
     const bloomSlider = document.getElementById('bloomSlider');

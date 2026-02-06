@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaussian Fluids — WebGL 2 Implementation Plan</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-dim: #1f6feb;
+            --green: #3fb950;
+            --red: #f85149;
+            --orange: #d29922;
+            --purple: #bc8cff;
+            --code-bg: #1c2128;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar / Table of Contents */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 300px;
+            height: 100vh;
+            overflow-y: auto;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 24px 0;
+            z-index: 10;
+        }
+
+        .sidebar-header {
+            padding: 0 20px 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+
+        .sidebar-header h2 {
+            font-size: 15px;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .sidebar-header a {
+            display: inline-block;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        .sidebar-header a:hover {
+            color: var(--accent);
+        }
+
+        .sidebar nav a {
+            display: block;
+            padding: 5px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            border-left: 2px solid transparent;
+            transition: all 0.15s;
+        }
+
+        .sidebar nav a:hover {
+            color: var(--text);
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .sidebar nav a.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: rgba(88, 166, 255, 0.08);
+        }
+
+        .sidebar nav a.phase {
+            font-weight: 600;
+            padding-top: 10px;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .sidebar nav a.sub {
+            padding-left: 32px;
+            font-size: 12px;
+        }
+
+        /* Main content */
+        .content {
+            margin-left: 300px;
+            max-width: 900px;
+            padding: 40px 60px 100px;
+        }
+
+        .content h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .content .subtitle {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 56px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .content h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+
+        .content p {
+            margin-bottom: 16px;
+            color: var(--text);
+        }
+
+        .content strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .content a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Code blocks */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px;
+        }
+
+        p code, li code, td code {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 12px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--surface);
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        td {
+            background: var(--bg);
+            color: var(--text-secondary);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-bottom: 16px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        /* Blockquotes */
+        blockquote {
+            border-left: 3px solid var(--accent-dim);
+            padding: 8px 16px;
+            margin-bottom: 16px;
+            background: rgba(88, 166, 255, 0.05);
+            border-radius: 0 6px 6px 0;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Horizontal rules */
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 40px 0;
+        }
+
+        /* Checklist items */
+        .checklist {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .checklist li {
+            position: relative;
+            padding-left: 28px;
+            margin-bottom: 8px;
+        }
+
+        .checklist li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 5px;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-radius: 3px;
+            background: var(--bg);
+        }
+
+        /* Architecture diagram */
+        .diagram {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: pre;
+            color: var(--text-secondary);
+        }
+
+        /* Phase cards */
+        .phase-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+
+        .phase-card h3 {
+            margin-top: 0;
+            color: var(--accent);
+        }
+
+        /* Equation display */
+        .equation {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 20px;
+            margin: 12px 0 16px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 14px;
+            text-align: center;
+            color: var(--purple);
+            overflow-x: auto;
+        }
+
+        /* Tags */
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tag-gpu { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+        .tag-cpu { background: rgba(210, 153, 34, 0.15); color: var(--orange); }
+        .tag-glsl { background: rgba(188, 140, 255, 0.15); color: var(--purple); }
+
+        /* Responsive */
+        @media (max-width: 1000px) {
+            .sidebar { display: none; }
+            .content { margin-left: 0; padding: 24px; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+    </style>
+</head>
+<body>
+<div class="layout">
+
+<!-- Sidebar -->
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <h2>Gaussian Fluids Plan</h2>
+        <a href="index.html">&larr; Back to Main</a>
+    </div>
+    <nav id="toc">
+        <a href="#paper-summary">1. Paper Summary & Core Math</a>
+        <a href="#webgl2-constraints" class="sub">2. WebGL 2 Constraints</a>
+        <a href="#architecture" class="sub">3. System Architecture</a>
+        <a href="#phase-1" class="phase">Phase 1: GPGPU Foundation</a>
+        <a href="#phase-2" class="phase">Phase 2: Gaussian Representation</a>
+        <a href="#phase-3" class="phase">Phase 3: Velocity Field Eval</a>
+        <a href="#phase-4" class="phase">Phase 4: Advection (RK4)</a>
+        <a href="#phase-5" class="phase">Phase 5: Projection & Optimization</a>
+        <a href="#phase-6" class="phase">Phase 6: Adaptive Reseeding</a>
+        <a href="#phase-7" class="phase">Phase 7: Visualization</a>
+        <a href="#phase-8" class="phase">Phase 8: 3D Extension</a>
+        <a href="#phase-9" class="phase">Phase 9: Interactivity</a>
+        <a href="#phase-10" class="phase">Phase 10: Polish & Performance</a>
+        <a href="#file-structure">File Structure</a>
+        <a href="#milestones">Milestones & Verification</a>
+        <a href="#appendix-a">Appendix A: Equations</a>
+        <a href="#appendix-b">Appendix B: Loss Weights</a>
+        <a href="#appendix-c">Appendix C: Parameters</a>
+    </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="content" id="top">
+
+<h1>Gaussian Fluids: WebGL 2 Implementation Plan</h1>
+<p class="subtitle">
+    Interactive fluid simulation based on <em>"Gaussian Fluids: A Grid-Free Fluid Solver based on Gaussian Spatial Representation"</em>
+    (Xing et al., SIGGRAPH 2025), adapted for real-time rendering with <strong>WebGL 2 + GLSL ES 3.0</strong> shaders.
+</p>
+
+<hr>
+
+<!-- Section 1 -->
+<h2 id="paper-summary">1. Paper Summary & Core Math</h2>
+
+<h3>1.1 Core Idea</h3>
+<p>The velocity field <strong>u(x)</strong> of a fluid is represented as a weighted sum of N anisotropic Gaussian basis functions &mdash; directly inspired by 3D Gaussian Splatting, but encoding <em>vector fields</em> instead of radiance. The continuous, differentiable representation is evolved over time by recasting the Navier-Stokes equations as an optimization problem.</p>
+
+<h3>1.2 Gaussian Basis Function</h3>
+<p>Each Gaussian kernel:</p>
+<div class="equation">G_i(x) = exp( -0.5 &middot; (x - &mu;_i)^T &middot; &Sigma;_i^{-1} &middot; (x - &mu;_i) )</div>
+<p>Where:</p>
+<ul>
+    <li><strong>&mu;_i</strong> &isin; &Ropf;^d &mdash; center position of the i-th Gaussian</li>
+    <li><strong>&Sigma;_i = R_i &middot; S_i &middot; S_i^T &middot; R_i^T</strong> &mdash; covariance matrix</li>
+    <li><strong>R_i</strong> &mdash; rotation matrix (angle &theta; in 2D, quaternion in 3D)</li>
+    <li><strong>S_i</strong> &mdash; diagonal scale matrix (stored as <code>log(s)</code> to keep positive)</li>
+</ul>
+
+<h3>1.3 Velocity Field</h3>
+<div class="equation">u(x) = &Sigma;_{i=1}^{N} w_i &middot; G_i(x)</div>
+<p>Where <strong>w_i</strong> &isin; &Ropf;^d is the vector-valued weight (velocity contribution) of the i-th Gaussian.</p>
+
+<h3>1.4 Spatial Derivatives (Analytical)</h3>
+<p>Because each Gaussian is infinitely differentiable, all spatial derivatives are computed analytically:</p>
+<div class="equation">&nabla;G_i(x) = -&Sigma;_i^{-1} &middot; (x - &mu;_i) &middot; G_i(x)</div>
+<p>The velocity gradient tensor:</p>
+<div class="equation">&part;u_j/&part;x_k = &Sigma;_i w_{i,j} &middot; [-&Sigma;_i^{-1} &middot; (x - &mu;_i)]_k &middot; G_i(x)</div>
+
+<p><strong>2D Vorticity</strong> (scalar): <code>&omega; = &part;u_y/&part;x - &part;u_x/&part;y</code></p>
+<p><strong>2D Divergence</strong> (scalar): <code>&nabla;&middot;u = &part;u_x/&part;x + &part;u_y/&part;y</code></p>
+<p><strong>3D Vorticity</strong> (vector): <code>&omega; = &nabla; &times; u</code></p>
+
+<h3>1.5 Navier-Stokes (Incompressible)</h3>
+<div class="equation">&part;u/&part;t + (u &middot; &nabla;)u = -(1/&rho;)&nabla;p + &nu;&nabla;&sup2;u + f<br>&nabla; &middot; u = 0</div>
+
+<h3>1.6 Operator-Splitting Solver (Per Time Step)</h3>
+<ol>
+    <li><strong>Reseed</strong> &mdash; Split Gaussians with high anisotropy ratio (<code>max(s)/min(s) &ge; r_aniso</code>)</li>
+    <li><strong>Advect</strong> &mdash; Move Gaussian centers via RK4; covector-advect weights via flow Jacobian</li>
+    <li><strong>Project</strong> &mdash; Fix positions/rotations, optimize weights + scales to minimize physics losses</li>
+</ol>
+
+<h3>1.7 Loss Functions</h3>
+<div class="equation">L_total = &lambda;_&omega; &middot; L_&omega; + &lambda;_div &middot; L_div + &lambda;_bnd &middot; L_bnd + &lambda;_pos &middot; L_pos + &lambda;_aniso &middot; L_aniso + &lambda;_vol &middot; L_vol</div>
+
+<table>
+    <tr><th>Loss</th><th>Formula</th><th>Purpose</th></tr>
+    <tr><td><strong>L_&omega;</strong></td><td><code>mean(|&omega;_current - &omega;_target|)</code></td><td>Preserve vortex structures</td></tr>
+    <tr><td><strong>L_div</strong></td><td><code>mean((&nabla;&middot;u)&sup2;)</code></td><td>Enforce incompressibility</td></tr>
+    <tr><td><strong>L_bnd</strong></td><td><code>mean(|u&middot;n|&sup2;)</code> at walls</td><td>No-penetration condition</td></tr>
+    <tr><td><strong>L_pos</strong></td><td><code>mean(|&mu; - &mu;_advected|&sup2;)</code></td><td>Prevent particle drift</td></tr>
+    <tr><td><strong>L_aniso</strong></td><td><code>mean(max(ratio, 1.5) - 1.5)</code></td><td>Limit elongation</td></tr>
+    <tr><td><strong>L_vol</strong></td><td><code>mean((det(S) - det(S_ref))&sup2;)</code></td><td>Regularize Gaussian size</td></tr>
+</table>
+
+<h3>1.8 Gradient Projection</h3>
+<p>When vorticity and divergence gradients conflict (negative dot product), project the divergence gradient orthogonally:</p>
+<div class="equation">g'_div = g_div - (g_div &middot; g_&omega; / g_&omega; &middot; g_&omega;) &middot; g_&omega;</div>
+
+<h3>1.9 Covector Advection</h3>
+<p>After RK4 advection, the inverse covariance updates via the flow Jacobian <strong>F = &part;&Phi;/&part;x</strong>:</p>
+<div class="equation">&Sigma;^{-1}_new = F^T &middot; &Sigma;^{-1}_old &middot; F</div>
+
+<h3>1.10 Divergence-Free Stream Function (2D Only)</h3>
+<p>An exactly divergence-free velocity field from a scalar stream function &phi;:</p>
+<div class="equation">&phi;(x) = &Sigma;_i &phi;_i &middot; G_i(x)<br>u(x) = J &middot; &nabla;&phi;(x) &nbsp;&nbsp; where J = [[0, -1], [1, 0]]</div>
+<p>This gives <code>u_x = -&part;&phi;/&part;y</code> and <code>u_y = &part;&phi;/&part;x</code>, which is automatically divergence-free.</p>
+
+<hr>
+
+<!-- Section 2 -->
+<h2 id="webgl2-constraints">2. WebGL 2 Architecture Constraints</h2>
+
+<h3>2.1 What We Have</h3>
+<table>
+    <tr><th>Feature</th><th>WebGL 2 / GLSL ES 3.0 Support</th></tr>
+    <tr><td>Float textures (read)</td><td><code>OES_texture_float</code> &mdash; widely supported</td></tr>
+    <tr><td>Float textures (render to)</td><td><code>EXT_color_buffer_float</code> &mdash; required, check at init</td></tr>
+    <tr><td>Multiple Render Targets</td><td>Up to 4 via <code>gl.drawBuffers()</code></td></tr>
+    <tr><td>Transform Feedback</td><td>Capture vertex shader outputs to buffers</td></tr>
+    <tr><td>3D Textures</td><td><code>sampler3D</code> &mdash; native in WebGL 2</td></tr>
+    <tr><td>Integer textures</td><td><code>isampler2D</code> / <code>usampler2D</code> &mdash; native</td></tr>
+    <tr><td><code>texelFetch()</code></td><td>Direct texel access without filtering &mdash; native</td></tr>
+    <tr><td>Instanced rendering</td><td><code>gl.drawArraysInstanced()</code> &mdash; native</td></tr>
+</table>
+
+<h3>2.2 What We Don't Have</h3>
+<table>
+    <tr><th>Missing Feature</th><th>Workaround</th></tr>
+    <tr><td>Compute shaders</td><td>GPGPU via fullscreen-quad fragment shader passes writing to FBOs</td></tr>
+    <tr><td>Shader Storage Buffers</td><td>Encode data in float textures; use <code>texelFetch()</code></td></tr>
+    <tr><td>Atomic counters</td><td>Multi-pass reduction; CPU readback for counts</td></tr>
+    <tr><td>Shared memory</td><td>Each fragment independent; use texture lookups for neighbor data</td></tr>
+    <tr><td>Read-write textures</td><td>Ping-pong: read from A, write to B, swap</td></tr>
+    <tr><td>Arbitrary scatter writes</td><td>Vertex shader + transform feedback, or restructure as gather</td></tr>
+</table>
+
+<h3>2.3 GPGPU Strategy</h3>
+<p>All "computation" in WebGL 2 happens by:</p>
+<ol>
+    <li>Binding input data as <strong>float textures</strong> (RGBA32F)</li>
+    <li>Rendering a <strong>fullscreen triangle</strong> (covers the viewport)</li>
+    <li>A <strong>fragment shader</strong> reads inputs via <code>texelFetch()</code>, computes, writes to <code>gl_FragColor</code></li>
+    <li>Output goes to a <strong>Framebuffer Object (FBO)</strong> with float texture attachment</li>
+    <li><strong>Ping-pong</strong> between two FBOs for iterative algorithms</li>
+    <li><strong>MRT</strong> to write up to 4 vec4 outputs per pass</li>
+</ol>
+
+<h3>2.4 Data Layout in Textures</h3>
+<p>For N Gaussians, use a texture of width W = ceil(sqrt(N)), height H = W. Each Gaussian's index <code>i</code> maps to texel <code>(i % W, i / W)</code>.</p>
+
+<p><strong>2D Gaussian data (2 textures):</strong></p>
+<table>
+    <tr><th>Texture</th><th>RGBA Contents</th><th>Per-Gaussian</th></tr>
+    <tr><td><code>t_posScale</code></td><td><code>(&mu;_x, &mu;_y, log_s_x, log_s_y)</code></td><td>position + log-scale</td></tr>
+    <tr><td><code>t_rotWeight</code></td><td><code>(&theta;, w_x, w_y, 0.0)</code></td><td>rotation + velocity weight</td></tr>
+</table>
+
+<p><strong>3D Gaussian data (4 textures):</strong></p>
+<table>
+    <tr><th>Texture</th><th>RGBA Contents</th></tr>
+    <tr><td><code>t_pos</code></td><td><code>(&mu;_x, &mu;_y, &mu;_z, 0)</code></td></tr>
+    <tr><td><code>t_scale</code></td><td><code>(logS_x, logS_y, logS_z, 0)</code></td></tr>
+    <tr><td><code>t_rot</code></td><td><code>(q_x, q_y, q_z, q_w)</code></td></tr>
+    <tr><td><code>t_weight</code></td><td><code>(w_x, w_y, w_z, 0)</code></td></tr>
+</table>
+
+<h3>2.5 Performance Budget</h3>
+<p>Target: <strong>60 fps</strong> on mid-range GPU.</p>
+<table>
+    <tr><th>Parameter</th><th>Budget</th></tr>
+    <tr><td>Gaussians (2D)</td><td>512&ndash;2048</td></tr>
+    <tr><td>Gaussians (3D)</td><td>256&ndash;1024</td></tr>
+    <tr><td>Velocity grid (2D)</td><td>256&times;256</td></tr>
+    <tr><td>Velocity grid (3D)</td><td>64&times;64&times;64</td></tr>
+    <tr><td>Optimization iters/frame</td><td>4&ndash;16</td></tr>
+    <tr><td>RK4 substeps</td><td>1 per frame</td></tr>
+</table>
+
+<hr>
+
+<!-- Section 3 -->
+<h2 id="architecture">3. System Architecture Overview</h2>
+
+<div class="diagram">                    JavaScript (CPU)
+  ┌──────────┐  ┌───────────┐  ┌──────────────────────┐
+  │  Three.js │  │ Simulation│  │   Interaction        │
+  │  Scene &  │  │ Controller│  │   (mouse, GUI)       │
+  │  Renderer │  │ (timestep │  │                      │
+  │           │  │  loop)    │  │                      │
+  └─────┬─────┘  └─────┬─────┘  └──────────┬───────────┘
+        │              │                    │
+        └──────────────┼────────────────────┘
+                       ▼
+         ┌─────────────────────────────────┐
+         │       GPU Pass Manager          │
+         │  (FBOs, textures, pass chain)   │
+         └──────────────┬──────────────────┘
+                        ▼
+                   GPU (WebGL 2)
+  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+  │  Advection   │  │  Projection  │  │ Visualization│
+  │  Pass (RK4)  │  │  Passes      │  │ Pass         │
+  │              │  │  (iterative) │  │              │
+  │  Reads:      │  │  Reads:      │  │  Reads:      │
+  │  - particles │  │  - particles │  │  - particles │
+  │  - vel field │  │  - &omega;_target  │  │  Writes:     │
+  │  Writes:     │  │  Writes:     │  │  - screen    │
+  │  - particles'│  │  - particles'│  │              │
+  └──────────────┘  └──────────────┘  └──────────────┘
+
+  Float Texture Pool:
+  [t_posScale_A/B] [t_rotWeight_A/B] [t_velField]
+  [t_vorticityTarget] [t_gridAccel] [t_gradients]</div>
+
+<h3>Solver Loop (Per Frame)</h3>
+<ol>
+    <li><span class="tag tag-gpu">GPU</span> Reseed Pass &mdash; check anisotropy, mark splits</li>
+    <li><span class="tag tag-gpu">GPU</span> Advection Pass &mdash; RK4 move particles, covector advect weights</li>
+    <li><span class="tag tag-gpu">GPU</span> Compute &omega;_target &mdash; evaluate vorticity at sample points</li>
+    <li><span class="tag tag-gpu">GPU</span> Projection Loop (K iterations):
+        <ol type="a">
+            <li>Evaluate current &omega; and &nabla;&middot;u at sample points</li>
+            <li>Compute loss gradients w.r.t. weights and scales</li>
+            <li>Apply gradient descent update (Adam-like)</li>
+            <li>Apply gradient projection if &omega;/div gradients conflict</li>
+        </ol>
+    </li>
+    <li><span class="tag tag-cpu">CPU</span> Build spatial grid &mdash; bin particles for fast neighbor lookup</li>
+    <li><span class="tag tag-gpu">GPU</span> Visualization Pass &mdash; evaluate field, color-map, composite</li>
+</ol>
+
+<hr>
+
+<!-- Phase 1 -->
+<h2 id="phase-1">Phase 1 &mdash; GPGPU Foundation</h2>
+<blockquote>Build the reusable infrastructure for all GPU computation passes.</blockquote>
+
+<div class="phase-card">
+<h3>Step 1.1: WebGL 2 Context & Extension Setup</h3>
+<p>Create <code>js/gpu/context.js</code> &mdash; Initialize WebGL 2 context, check and enable required extensions (<code>EXT_color_buffer_float</code>, <code>OES_texture_float_linear</code>), query <code>MAX_DRAW_BUFFERS</code> for MRT support.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 1.2: Float Texture Manager</h3>
+<p>Create <code>js/gpu/textures.js</code>:</p>
+<ul>
+    <li><code>createFloatTexture(w, h)</code> &rarr; RGBA32F texture with NEAREST filtering, CLAMP_TO_EDGE</li>
+    <li><code>createPingPongPair(w, h)</code> &rarr; two textures + two FBOs with <code>swap()</code> method</li>
+    <li><code>uploadFloatData(texture, Float32Array)</code></li>
+    <li><code>readbackFloatData(fbo, w, h)</code> &rarr; Float32Array</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 1.3: Fullscreen Triangle & Pass Runner</h3>
+<p>Create <code>js/gpu/pass.js</code>:</p>
+<ul>
+    <li>Fullscreen triangle vertex shader (3 vertices covering clip space, no buffer needed &mdash; use <code>gl_VertexID</code>)</li>
+    <li><code>class GPUPass</code> &mdash; takes fragment source + uniform definitions, handles binding input textures and executing to output FBO</li>
+    <li>Support for MRT output (<code>gl.drawBuffers</code>)</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 1.4: Shader Compilation Utilities</h3>
+<p>Create <code>js/gpu/shaders.js</code> &mdash; <code>compileShader()</code>, <code>linkProgram()</code>, common GLSL preamble (<code>#version 300 es</code>, precision qualifiers).</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 1.5: Verification</h3>
+<ul>
+    <li>Write <code>sin(uv.x * 10.0)</code> to a float texture, read it back, verify against CPU</li>
+    <li>Ping-pong test: write, read-back-and-modify, write again &mdash; confirm values chain correctly</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 2 -->
+<h2 id="phase-2">Phase 2 &mdash; Gaussian Spatial Representation</h2>
+<blockquote>Implement the core data structure: Gaussians encoded in textures with analytical derivative support.</blockquote>
+
+<div class="phase-card">
+<h3>Step 2.1: Gaussian Parameter Initialization <span class="tag tag-cpu">CPU</span></h3>
+<p>Create <code>js/simulation/gaussians.js</code>:</p>
+<ul>
+    <li><code>class GaussianField</code> &mdash; N particles, texSize = ceil(sqrt(N))</li>
+    <li>CPU arrays: <code>positions[N*2]</code>, <code>logScales[N*2]</code>, <code>rotations[N]</code>, <code>weights[N*2]</code></li>
+    <li><code>initGrid(domainMin, domainMax, nx, ny)</code> &mdash; regular grid placement, initial scales ~1.5&times; spacing</li>
+    <li><code>uploadToGPU()</code> / <code>readbackFromGPU()</code> &mdash; pack/unpack from textures</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 2.2: Gaussian Evaluation Functions <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/common/gaussian_eval.glsl</code> &mdash; shared #include-style functions:</p>
+<pre><code>mat2 getInvCovariance(float theta, vec2 logScale) {
+    vec2 s_inv = 1.0 / exp(logScale);
+    float c = cos(theta), sn = sin(theta);
+    mat2 R = mat2(c, sn, -sn, c);
+    mat2 RS = R * mat2(s_inv.x, 0, 0, s_inv.y);
+    return transpose(RS) * RS;
+}
+
+float evalGaussian(vec2 x, vec2 mu, mat2 sigmaInv) {
+    vec2 d = x - mu;
+    return exp(-0.5 * dot(d, sigmaInv * d));
+}
+
+vec2 gradGaussian(vec2 x, vec2 mu, mat2 sigmaInv, float g) {
+    return -(sigmaInv * (x - mu)) * g;
+}</code></pre>
+</div>
+
+<div class="phase-card">
+<h3>Step 2.3: Velocity Evaluation Shader <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/eval_velocity.frag</code> &mdash; for each screen pixel, sum all Gaussian contributions: <code>u(x) = &Sigma;_i w_i &middot; G_i(x)</code></p>
+</div>
+
+<div class="phase-card">
+<h3>Step 2.4: Velocity Gradient Tensor Shader <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/eval_velocity_grad.frag</code> &mdash; output via MRT:</p>
+<ul>
+    <li>location 0: <code>vec4(u_x, u_y, 0, 0)</code> &mdash; velocity</li>
+    <li>location 1: <code>vec4(&part;ux/&part;x, &part;ux/&part;y, &part;uy/&part;x, &part;uy/&part;y)</code> &mdash; gradient tensor</li>
+</ul>
+<p>Vorticity = <code>grad.z - grad.y</code>, Divergence = <code>grad.x + grad.w</code></p>
+</div>
+
+<div class="phase-card">
+<h3>Step 2.5: Verification</h3>
+<ul>
+    <li>Initialize Taylor-Green vortex: <code>u = (sin(x)cos(y), -cos(x)sin(y))</code></li>
+    <li>Fit Gaussian weights, render velocity magnitude &mdash; checkerboard pattern</li>
+    <li>Compare vorticity <code>&omega; = -2sin(x)sin(y)</code> with computed &mdash; visual match</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 3 -->
+<h2 id="phase-3">Phase 3 &mdash; Velocity Field Evaluation</h2>
+<blockquote>Build the spatial acceleration structure and efficient field evaluation pass.</blockquote>
+
+<div class="phase-card">
+<h3>Step 3.1: Spatial Grid Construction <span class="tag tag-cpu">CPU</span></h3>
+<p>Create <code>js/simulation/spatial-grid.js</code>:</p>
+<ul>
+    <li>Divide domain into 32&times;32 cells</li>
+    <li>Each Gaussian has effective radius ~3&middot;max(scale)</li>
+    <li>CPU-side: read positions, bin into cells, upload index texture</li>
+    <li>Format: 2D texture, row = cell, columns = Gaussian indices, max 32 per cell</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 3.2: Grid-Accelerated Evaluation <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/eval_velocity_grid.frag</code> &mdash; look up 3&times;3 neighboring cells, only evaluate indexed Gaussians.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 3.3: Vorticity & Divergence Field <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/eval_vorticity_div.frag</code> &mdash; analytical vorticity and divergence using Gaussian gradient formulas. Output: <code>vec4(&omega;, div, 0, 0)</code>.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 3.4: Verification</h3>
+<ul>
+    <li>Taylor-Green vorticity field &mdash; smooth sine pattern</li>
+    <li>Divergence near zero everywhere</li>
+    <li>Brute-force vs grid-accelerated &mdash; identical within float precision</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 4 -->
+<h2 id="phase-4">Phase 4 &mdash; Advection (RK4)</h2>
+<blockquote>Move Gaussian particles through the velocity field using 4th-order Runge-Kutta integration.</blockquote>
+
+<div class="phase-card">
+<h3>Step 4.1: Particle Advection Pass <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/advect_particles.frag</code>:</p>
+<pre><code>// Each fragment = one Gaussian particle
+// RK4 integration:
+k1 = dt * evalVelocity(pos)
+k2 = dt * evalVelocity(pos + 0.5*k1)
+k3 = dt * evalVelocity(pos + 0.5*k2)
+k4 = dt * evalVelocity(pos + k3)
+newPos = pos + (k1 + 2*k2 + 2*k3 + k4) / 6</code></pre>
+</div>
+
+<div class="phase-card">
+<h3>Step 4.2: Flow Jacobian Computation <span class="tag tag-glsl">GLSL</span></h3>
+<p>Compute velocity gradient <code>&part;u/&part;x</code> at particle position. First-order Jacobian: <code>F = I + dt &middot; &nabla;u</code>. For higher accuracy, accumulate through RK4 stages.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 4.3: Covector Advection Pass <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/advect_covector.frag</code>:</p>
+<ol>
+    <li>Compute flow Jacobian F</li>
+    <li>Update inverse covariance: <code>&Sigma;^{-1}_new = F^T &middot; &Sigma;^{-1}_old &middot; F</code></li>
+    <li>Decompose back to (&theta;_new, logS_new) via 2&times;2 SVD</li>
+    <li>Covector-advect weight: <code>w_new = F^{-T} &middot; w_old</code></li>
+</ol>
+<p>Output via MRT: updated posScale + rotWeight textures.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 4.4: Domain Boundary Clamping</h3>
+<p>After advection, mark out-of-domain particles inactive (zero weight) or reflect back.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 4.5: Verification</h3>
+<ul>
+    <li>Single Gaussian in uniform flow <code>u = (1,0)</code> &mdash; translates right</li>
+    <li>Taylor-Green: particles follow streamlines</li>
+    <li>Covector advection in shear flow: rotation updates correctly</li>
+    <li>Energy roughly conserved over many steps</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 5 -->
+<h2 id="phase-5">Phase 5 &mdash; Projection & Optimization</h2>
+<blockquote>The most critical phase. Enforce physical constraints by optimizing Gaussian weights and scales. All gradients are analytical &mdash; no autograd needed.</blockquote>
+
+<div class="phase-card">
+<h3>Step 5.1: Target Vorticity Computation <span class="tag tag-gpu">GPU</span></h3>
+<p>Create <code>shaders/simulation/compute_target_vorticity.frag</code> &mdash; evaluate vorticity of the advected field at a regular grid of sample points (128&times;128). This is the target that projection must preserve.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.2: Loss Gradient Computation (Analytical) <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/compute_loss_gradients.frag</code> &mdash; the core shader. Each fragment = one Gaussian. Inner loop sums contributions from sample points:</p>
+<pre><code>// Vorticity loss gradient w.r.t. weight:
+&part;L_&omega;/&part;w_{i,x} = (1/M) &Sigma;_j sign(&omega;(x_j) - &omega;_target(x_j))
+                    &middot; (-[&Sigma;^{-1}(x_j-&mu;_i)]_y) &middot; G_i(x_j)
+
+// Divergence loss gradient w.r.t. weight:
+&part;L_div/&part;w_{i,x} = (2/M) &Sigma;_j div(x_j)
+                     &middot; (-[&Sigma;^{-1}(x_j-&mu;_i)]_x) &middot; G_i(x_j)</code></pre>
+<p>Also compute scale gradients analogously.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.3: Gradient Projection <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/gradient_project.frag</code>:</p>
+<pre><code>float d = dot(grad_div, grad_omega);
+if (d < 0.0) {
+    grad_div -= (d / dot(grad_omega, grad_omega)) * grad_omega;
+}
+combined = lambda_omega * grad_omega + lambda_div * grad_div;</code></pre>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.4: Adam Optimizer Step <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/adam_update.frag</code> &mdash; per-Gaussian Adam in a fragment shader. Maintains first/second moment textures (<code>t_adam_m</code>, <code>t_adam_v</code>). Typical: lr=0.01, &beta;1=0.9, &beta;2=0.999.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.5: Projection Iteration Loop <span class="tag tag-cpu">CPU</span></h3>
+<p>JavaScript orchestrates K iterations per time step:</p>
+<pre><code>for (let k = 0; k &lt; K; k++) {
+    evalVorticityDivPass.execute(t_currentVorDiv);
+    computeGradientsPass.execute(t_gradWeights, t_gradScales);
+    gradientProjectPass.execute(t_projectedGrads);
+    addRegularizationPass.execute(t_totalGrads);
+    adamUpdatePass.execute(t_rotWeight_out);
+    adamUpdateScalePass.execute(t_posScale_out);
+    pingPong.swap();
+}</code></pre>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.6: Boundary & Regularization Losses <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/simulation/boundary_loss.frag</code> &mdash; sample walls, penalize <code>u&middot;n</code>. Add anisotropy + volume regularization gradients.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 5.7: Verification</h3>
+<ul>
+    <li>Taylor-Green: divergence decreases after projection</li>
+    <li>Vorticity error stays small through advect+project</li>
+    <li>Gradient projection eliminates ripple artifacts</li>
+    <li>Adam converges in &lt;16 iterations</li>
+    <li>Stable for &gt;500 time steps</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 6 -->
+<h2 id="phase-6">Phase 6 &mdash; Adaptive Reseeding</h2>
+<blockquote>Split elongated Gaussians to maintain representation quality.</blockquote>
+
+<div class="phase-card">
+<h3>Step 6.1: Anisotropy Detection <span class="tag tag-gpu">GPU</span></h3>
+<p>Create <code>shaders/simulation/detect_splits.frag</code> &mdash; compute <code>max(s)/min(s)</code> per Gaussian, flag those &ge; threshold (1.5&ndash;2.0).</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 6.2: Splitting <span class="tag tag-cpu">CPU</span></h3>
+<p>Read back flags. For each flagged Gaussian, create 2 children along the major axis:</p>
+<ul>
+    <li>Positions offset by &plusmn;0.5&middot;R&middot;[s_major, 0]</li>
+    <li>Major scale halved, minor scale unchanged</li>
+    <li>Weights halved</li>
+    <li>Resize textures, re-upload, rebuild spatial grid</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 6.3: Post-Split Refinement</h3>
+<p>Run 4&ndash;8 projection iterations to correct the field representation after splitting.</p>
+</div>
+
+<hr>
+
+<!-- Phase 7 -->
+<h2 id="phase-7">Phase 7 &mdash; Visualization & Rendering</h2>
+<blockquote>Render the fluid field with informative and beautiful colormaps.</blockquote>
+
+<div class="phase-card">
+<h3>Step 7.1: Vorticity Colormap <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/render_vorticity.frag</code> &mdash; diverging blue-white-red colormap. Negative &omega; &rarr; blue (clockwise), positive &omega; &rarr; red (counter-clockwise).</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 7.2: Velocity Magnitude Colormap <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/render_velocity.frag</code> &mdash; sequential viridis-like colormap of |u|.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 7.3: Dye Advection (Passive Tracer) <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/advect_dye.frag</code> &mdash; semi-Lagrangian backward trace through velocity field. Bilinear sample dye texture at traced-back position. Users inject colored dye via mouse.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 7.4: Gaussian Debug Visualization <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/render_gaussians.vert</code> + <code>.frag</code> &mdash; instanced rendering of oriented ellipses. Color by weight direction. Useful for debugging.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 7.5: Screen Composite <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/composite.frag</code> &mdash; layer vorticity/velocity background + dye overlay + debug ellipses + UI.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 7.6: Verification</h3>
+<ul>
+    <li>Taylor-Green vortex: 4 counter-rotating cells visible</li>
+    <li>Dye shows smooth swirling patterns</li>
+    <li>Gaussian ellipses align with local flow</li>
+    <li>60fps at 256&times;256</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 8 -->
+<h2 id="phase-8">Phase 8 &mdash; 3D Extension</h2>
+<blockquote>Extend the solver to three dimensions with volume rendering.</blockquote>
+
+<div class="phase-card">
+<h3>Step 8.1: 3D Gaussian Parameters</h3>
+<p>Extend to 4 textures: position, logScale (3 components), quaternion rotation, weight (3 components). Total 13 floats per Gaussian.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.2: 3D Evaluation Shader <span class="tag tag-glsl">GLSL</span></h3>
+<p><code>mat3 getInvCovariance3D(vec4 quat, vec3 logScale)</code> &mdash; build rotation from quaternion, compute <code>&Sigma;^{-1}</code>.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.3: Quaternion Utilities <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/common/quaternion.glsl</code> &mdash; <code>quatToMat3</code>, <code>mat3ToQuat</code>, <code>quatMul</code>, <code>quatNormalize</code>.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.4: 3D Velocity in 3D Texture</h3>
+<p>Evaluate field on 64&times;64&times;64 grid. Render to 2D atlas (64 slices), copy to <code>sampler3D</code> via <code>gl.texSubImage3D()</code>.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.5: 3D Vorticity (Vector)</h3>
+<p><code>&omega; = &nabla; &times; u</code> requires full 3&times;3 gradient tensor. Pack into atlas textures.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.6: 3D RK4 + Covector Advection</h3>
+<p>Same structure as 2D with vec3/mat3. Polar decomposition of 3&times;3 for quaternion extraction.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.7: Volume Rendering <span class="tag tag-glsl">GLSL</span></h3>
+<p>Create <code>shaders/rendering/volume_raycast.frag</code>:</p>
+<ol>
+    <li>For each pixel, compute ray from camera</li>
+    <li>March through domain with fixed step</li>
+    <li>Sample vorticity magnitude from 3D texture</li>
+    <li>Apply transfer function (magnitude &rarr; color + opacity)</li>
+    <li>Front-to-back alpha compositing</li>
+    <li>Early ray termination at &alpha; &gt; 0.99</li>
+</ol>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.8: 3D Projection</h3>
+<p>Same loss structure as 2D. Vorticity is a 3-vector. Optionally add helicity conservation (<code>h = &omega; &middot; u</code>). Sample grid: 32&sup3; = 32K points.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 8.9: Verification</h3>
+<ul>
+    <li>Leapfrog vortex rings &mdash; two coaxial rings pass through each other</li>
+    <li>Volume render shows ring structures</li>
+    <li>Divergence near zero after projection</li>
+</ul>
+</div>
+
+<hr>
+
+<!-- Phase 9 -->
+<h2 id="phase-9">Phase 9 &mdash; Interactivity</h2>
+<blockquote>Make it a true interactive demo.</blockquote>
+
+<div class="phase-card">
+<h3>Step 9.1: Mouse/Touch Force Injection</h3>
+<p>Map screen coords to domain, inject force Gaussian with weight proportional to mouse velocity. Effectively injects vorticity.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 9.2: Dye Injection</h3>
+<p>On mouse press, splat colored dye into dye texture. Cycle through hues for visual distinction.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 9.3: GUI Controls</h3>
+<table>
+    <tr><th>Control</th><th>Parameter</th><th>Range</th></tr>
+    <tr><td>Viscosity</td><td><code>&nu;</code></td><td>0.0 &ndash; 0.01</td></tr>
+    <tr><td>Time step</td><td><code>dt</code></td><td>0.005 &ndash; 0.05</td></tr>
+    <tr><td>Projection iters</td><td><code>K</code></td><td>1 &ndash; 32</td></tr>
+    <tr><td>Visualization</td><td>enum</td><td>vorticity / velocity / dye / debug</td></tr>
+    <tr><td>Brush radius</td><td>float</td><td>0.02 &ndash; 0.2</td></tr>
+    <tr><td>Force strength</td><td>float</td><td>0.1 &ndash; 10.0</td></tr>
+    <tr><td>Pause / Resume</td><td>bool</td><td>&mdash;</td></tr>
+    <tr><td>Reset</td><td>button</td><td>&mdash;</td></tr>
+</table>
+</div>
+
+<div class="phase-card">
+<h3>Step 9.4: Preset Scenes</h3>
+<ul>
+    <li><strong>Taylor-Green Vortex</strong> &mdash; periodic counter-rotating array</li>
+    <li><strong>Leapfrog Vortices</strong> &mdash; 4 vortices passing through each other</li>
+    <li><strong>Karman Street</strong> &mdash; flow past obstacle with shedding</li>
+    <li><strong>Free Canvas</strong> &mdash; blank field, user creates vortices</li>
+    <li><strong>Vortex Collision</strong> &mdash; two opposite-sign vortices colliding</li>
+</ul>
+</div>
+
+<div class="phase-card">
+<h3>Step 9.5: Camera Controls (3D)</h3>
+<p>OrbitControls (already in project dependencies). Smooth zoom, rotate, pan. Optional preset viewpoints.</p>
+</div>
+
+<hr>
+
+<!-- Phase 10 -->
+<h2 id="phase-10">Phase 10 &mdash; Polish & Performance</h2>
+
+<div class="phase-card">
+<h3>Step 10.1: Performance Profiling</h3>
+<p>Use <code>EXT_disjoint_timer_query_webgl2</code>. Target per-pass times: Advection &lt;2ms, Grid &lt;1ms, Projection iter &lt;3ms, Viz &lt;2ms. Total &lt;16ms.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 10.2: Adaptive Quality</h3>
+<p>If frame &gt;16ms: reduce K, reduce sample density, skip reseeding. If frame &lt;10ms: increase K for better quality.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 10.3: Half-Float Optimization</h3>
+<p>Use RGBA16F where precision allows (dye, visualization). Keep RGBA32F for particle parameters and Adam moments.</p>
+</div>
+
+<div class="phase-card">
+<h3>Step 10.4: Error Monitoring Overlay</h3>
+<p>Toggle-able diagnostics: max |&nabla;&middot;u|, total |&omega;| (enstrophy), particle count, frame time breakdown, GPU memory estimate.</p>
+</div>
+
+<hr>
+
+<!-- File Structure -->
+<h2 id="file-structure">File Structure</h2>
+<pre><code>Claude-experiments/
+├── index.html
+├── fluid.html                          # Fluid simulation entry
+├── js/
+│   ├── main.js                         # Existing terrain demo
+│   ├── fluid/
+│   │   ├── app.js                      # Main fluid app entry
+│   │   ├── simulation/
+│   │   │   ├── gaussians.js            # GaussianField class
+│   │   │   ├── solver.js               # Simulation loop
+│   │   │   ├── advection.js            # RK4 advection
+│   │   │   ├── projection.js           # Projection loop
+│   │   │   ├── reseeding.js            # Split/merge
+│   │   │   ├── spatial-grid.js         # Grid acceleration
+│   │   │   └── initial-conditions.js   # Preset configs
+│   │   ├── gpu/
+│   │   │   ├── context.js              # WebGL 2 setup
+│   │   │   ├── textures.js             # Float texture mgmt
+│   │   │   ├── pass.js                 # GPUPass class
+│   │   │   └── shaders.js              # Compilation utils
+│   │   ├── rendering/
+│   │   │   ├── visualizer.js           # Mode switcher
+│   │   │   ├── colormaps.js            # Colormap functions
+│   │   │   ├── dye-advection.js        # Passive tracer
+│   │   │   ├── volume-renderer.js      # 3D raycast
+│   │   │   └── debug-overlay.js        # Ellipses + stats
+│   │   └── interaction/
+│   │       ├── mouse-force.js          # Force injection
+│   │       ├── gui.js                  # Parameter controls
+│   │       └── presets.js              # Scene presets
+├── shaders/
+│   ├── common/
+│   │   ├── fullscreen.vert
+│   │   ├── gaussian_eval.glsl
+│   │   ├── quaternion.glsl
+│   │   └── colormaps.glsl
+│   ├── simulation/
+│   │   ├── eval_velocity.frag
+│   │   ├── eval_velocity_grid.frag
+│   │   ├── eval_vorticity_div.frag
+│   │   ├── advect_particles.frag
+│   │   ├── advect_covector.frag
+│   │   ├── compute_loss_gradients.frag
+│   │   ├── gradient_project.frag
+│   │   ├── adam_update.frag
+│   │   ├── detect_splits.frag
+│   │   └── boundary_loss.frag
+│   └── rendering/
+│       ├── render_vorticity.frag
+│       ├── render_velocity.frag
+│       ├── advect_dye.frag
+│       ├── inject_dye.frag
+│       ├── render_gaussians.vert
+│       ├── render_gaussians.frag
+│       ├── volume_raycast.frag
+│       └── composite.frag
+└── plan-fluid-shader.md</code></pre>
+
+<hr>
+
+<!-- Milestones -->
+<h2 id="milestones">Milestones & Verification</h2>
+
+<h3>Milestone 1: GPGPU Pipeline (Phase 1)</h3>
+<ul class="checklist">
+    <li>WebGL 2 context with float texture support</li>
+    <li>Fullscreen quad pass working</li>
+    <li>Ping-pong FBO read/write verified</li>
+    <li>Float readback matches CPU computation</li>
+</ul>
+
+<h3>Milestone 2: Static Gaussian Field (Phases 2&ndash;3)</h3>
+<ul class="checklist">
+    <li>Gaussians initialized on grid, uploaded to textures</li>
+    <li>Velocity field rendered &mdash; Taylor-Green pattern matches</li>
+    <li>Vorticity and divergence computed analytically</li>
+    <li>Spatial grid acceleration working &mdash; no visual diff from brute force</li>
+</ul>
+
+<h3>Milestone 3: Advection Working (Phase 4)</h3>
+<ul class="checklist">
+    <li>Particles advect correctly in uniform flow</li>
+    <li>Particles follow streamlines in Taylor-Green vortex</li>
+    <li>Covector advection updates shapes correctly</li>
+    <li>Flow Jacobian computed accurately</li>
+</ul>
+
+<h3>Milestone 4: Full Solver Loop (Phases 5&ndash;6)</h3>
+<ul class="checklist">
+    <li>Projection reduces divergence measurably</li>
+    <li>Vorticity preserved through advect+project cycle</li>
+    <li>Gradient projection eliminates ripple artifacts</li>
+    <li>Adam optimizer converges in &lt;16 iterations</li>
+    <li>Reseeding splits elongated Gaussians correctly</li>
+    <li>Simulation stable for &gt;500 time steps</li>
+</ul>
+
+<h3>Milestone 5: Beautiful Visualization (Phase 7)</h3>
+<ul class="checklist">
+    <li>Vorticity colormap renders correctly</li>
+    <li>Dye advection produces smooth swirling patterns</li>
+    <li>Gaussian debug view shows particle distribution</li>
+    <li>60fps at 256&times;256 with 1024 Gaussians</li>
+</ul>
+
+<h3>Milestone 6: 3D Extension (Phase 8)</h3>
+<ul class="checklist">
+    <li>3D Gaussian evaluation working</li>
+    <li>Leapfrog vortex rings simulated correctly</li>
+    <li>Volume rendering shows vortex structures</li>
+    <li>30fps at 64&sup3; with 512 Gaussians</li>
+</ul>
+
+<h3>Milestone 7: Interactive Demo (Phases 9&ndash;10)</h3>
+<ul class="checklist">
+    <li>Mouse force injection creates visible vortices</li>
+    <li>Dye injection with color cycling</li>
+    <li>GUI controls responsive</li>
+    <li>Preset scenes load correctly</li>
+    <li>Adaptive quality maintains smooth framerate</li>
+    <li>Error diagnostics overlay functional</li>
+</ul>
+
+<hr>
+
+<!-- Appendix A -->
+<h2 id="appendix-a">Appendix A: Key Equations Quick Reference</h2>
+<table>
+    <tr><th>Name</th><th>Equation</th></tr>
+    <tr><td>Gaussian</td><td><code>G_i(x) = exp(-0.5 &middot; (x-&mu;_i)^T &middot; &Sigma;_i^{-1} &middot; (x-&mu;_i))</code></td></tr>
+    <tr><td>Velocity</td><td><code>u(x) = &Sigma;_i w_i &middot; G_i(x)</code></td></tr>
+    <tr><td>Grad Gaussian</td><td><code>&nabla;G_i = -&Sigma;_i^{-1} &middot; (x-&mu;_i) &middot; G_i(x)</code></td></tr>
+    <tr><td>Vorticity (2D)</td><td><code>&omega; = &part;u_y/&part;x - &part;u_x/&part;y</code></td></tr>
+    <tr><td>Divergence</td><td><code>&nabla;&middot;u = &part;u_x/&part;x + &part;u_y/&part;y</code></td></tr>
+    <tr><td>Covariance</td><td><code>&Sigma;_i = R_i &middot; S_i &middot; S_i^T &middot; R_i^T</code></td></tr>
+    <tr><td>Covector Advect</td><td><code>&Sigma;^{-1}_new = F^T &middot; &Sigma;^{-1}_old &middot; F</code></td></tr>
+    <tr><td>Stream Function</td><td><code>u = J &middot; &nabla;&phi; (2D, exactly div-free)</code></td></tr>
+    <tr><td>Gradient Proj</td><td><code>g' = g_div - (g_div&middot;g_&omega; / g_&omega;&middot;g_&omega;) &middot; g_&omega;</code></td></tr>
+    <tr><td>Adam Update</td><td><code>p &larr; p - lr &middot; m&#x0302; / (&radic;v&#x0302; + &epsilon;)</code></td></tr>
+</table>
+
+<hr>
+
+<!-- Appendix B -->
+<h2 id="appendix-b">Appendix B: Loss Weight Recommendations</h2>
+<table>
+    <tr><th>Loss</th><th>Weight</th><th>Notes</th></tr>
+    <tr><td>&lambda;_&omega; (vorticity)</td><td>1.0</td><td>Primary physics loss</td></tr>
+    <tr><td>&lambda;_div (divergence)</td><td>0.1&ndash;1.0</td><td>Increase if div artifacts appear</td></tr>
+    <tr><td>&lambda;_bnd (boundary)</td><td>10.0</td><td>Strong enforcement needed</td></tr>
+    <tr><td>&lambda;_pos (position)</td><td>0.01</td><td>Light regularization</td></tr>
+    <tr><td>&lambda;_aniso (anisotropy)</td><td>0.1</td><td>Prevents extreme elongation</td></tr>
+    <tr><td>&lambda;_vol (volume)</td><td>0.01</td><td>Prevents collapse/explosion</td></tr>
+</table>
+
+<hr>
+
+<!-- Appendix C -->
+<h2 id="appendix-c">Appendix C: Typical Simulation Parameters</h2>
+<table>
+    <tr><th>Parameter</th><th>2D Value</th><th>3D Value</th></tr>
+    <tr><td>N (Gaussians)</td><td>576&ndash;2400</td><td>8000&ndash;64000</td></tr>
+    <tr><td>dt</td><td>0.025</td><td>0.025</td></tr>
+    <tr><td>Grid cells</td><td>32&times;32</td><td>16&times;16&times;16</td></tr>
+    <tr><td>Sample points</td><td>128&times;128</td><td>32&times;32&times;32</td></tr>
+    <tr><td>Projection iters (K)</td><td>8&ndash;16</td><td>4&ndash;8</td></tr>
+    <tr><td>r_aniso (split threshold)</td><td>1.5&ndash;2.0</td><td>1.5&ndash;2.0</td></tr>
+    <tr><td>Adam lr</td><td>0.01</td><td>0.01</td></tr>
+    <tr><td>Adam &beta;1</td><td>0.9</td><td>0.9</td></tr>
+    <tr><td>Adam &beta;2</td><td>0.999</td><td>0.999</td></tr>
+</table>
+<p>For <strong>real-time WebGL 2</strong>, use the lower end of these ranges and scale adaptively based on frame budget.</p>
+
+</main>
+</div>
+
+<!-- Active TOC highlight -->
+<script>
+(function() {
+    const links = document.querySelectorAll('#toc a');
+    const sections = [];
+    links.forEach(link => {
+        const id = link.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) sections.push({ el, link });
+    });
+
+    function onScroll() {
+        const scrollY = window.scrollY + 100;
+        let current = sections[0];
+        for (const s of sections) {
+            if (s.el.offsetTop <= scrollY) current = s;
+        }
+        links.forEach(l => l.classList.remove('active'));
+        if (current) current.link.classList.add('active');
+    }
+
+    window.addEventListener('scroll', onScroll);
+    onScroll();
+})();
+</script>
+
+</body>
+</html>

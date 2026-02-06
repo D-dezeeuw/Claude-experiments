@@ -906,7 +906,14 @@
         // Draw particles
         gl.drawArrays(gl.POINTS, 0, Math.min(particleCount, MAX_PARTICLES));
 
+        // Restore state for next frame
+        gl.disableVertexAttribArray(partA.pos);
+        gl.disableVertexAttribArray(partA.vel);
+        gl.disableVertexAttribArray(partA.birth);
         gl.disable(gl.BLEND);
+
+        // Rebind quad buffer for next frame
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       }
 
       requestAnimationFrame(render);

@@ -105,6 +105,8 @@
       <label class="hint"><kbd>1-5</kbd> palette</label>
       <span class="sep"></span>
       <label class="hint"><kbd>S</kbd> save</label>
+      <span class="sep"></span>
+      <label class="hint"><kbd>WASD</kbd> orbit <kbd>QE</kbd> zoom <kbd>SPACE</kbd> auto</label>
     </div>
     <div class="controls-row">
       <label>SSS</label>
@@ -270,6 +272,65 @@
       if (particleCount > 0 && !particlesInitialized) initParticles();
     });
 
+    // ── Camera state ──────────────────────────────────────────
+    let camAngle = 0;
+    let camElevation = 0.8;
+    let camDistance = 3.2;
+    let autoOrbit = true;
+    const keysDown = {};
+
+    document.addEventListener('keydown', (e) => {
+      keysDown[e.key.toLowerCase()] = true;
+
+      // Toggle auto-orbit with Space
+      if (e.key === ' ') {
+        autoOrbit = !autoOrbit;
+        e.preventDefault();
+      }
+    });
+    document.addEventListener('keyup', (e) => {
+      keysDown[e.key.toLowerCase()] = false;
+    });
+
+    // Camera control update (called in render loop)
+    function updateCamera(dt) {
+      const orbitSpeed = 1.5;
+      const elevSpeed = 1.0;
+      const zoomSpeed = 2.0;
+
+      // Arrow keys / WASD for orbit and elevation
+      if (keysDown['arrowleft'] || keysDown['a']) {
+        camAngle -= orbitSpeed * dt;
+        autoOrbit = false;
+      }
+      if (keysDown['arrowright'] || keysDown['d']) {
+        camAngle += orbitSpeed * dt;
+        autoOrbit = false;
+      }
+      if (keysDown['arrowup'] || keysDown['w']) {
+        camElevation += elevSpeed * dt;
+        autoOrbit = false;
+      }
+      if (keysDown['arrowdown'] || keysDown['s']) {
+        camElevation -= elevSpeed * dt;
+        autoOrbit = false;
+      }
+
+      // Q/E or +/- for zoom
+      if (keysDown['q'] || keysDown['='] || keysDown['+']) {
+        camDistance -= zoomSpeed * dt;
+        autoOrbit = false;
+      }
+      if (keysDown['e'] || keysDown['-']) {
+        camDistance += zoomSpeed * dt;
+        autoOrbit = false;
+      }
+
+      // Clamp values
+      camElevation = Math.max(-2.0, Math.min(2.5, camElevation));
+      camDistance = Math.max(1.5, Math.min(8.0, camDistance));
+    }
+
     // ── Auto-fade controls ───────────────────────────────────
     let fadeTimer;
     function showControls() {
@@ -348,6 +409,9 @@
       uniform float u_bailout;
       uniform float u_trapType;
       uniform float u_morph;
+      uniform float u_camAng;
+      uniform float u_camElev;
+      uniform float u_camDist;
 
       vec3 palette(float t) {
         return u_pa + u_pb * cos(6.28318 * (u_pc * t + u_pd));
@@ -476,9 +540,9 @@
         float t = u_time;
 
         // ── Camera ──────────────────────────────────────────
-        float camAng = t * 0.15;
-        float camY   = 0.8 + 0.5 * sin(t * 0.07);
-        float camD   = 3.2;
+        float camAng = u_camAng;
+        float camY   = u_camElev;
+        float camD   = u_camDist;
         vec3 ro = vec3(camD*cos(camAng), camY, camD*sin(camAng));
         vec3 ta = vec3(0.0);
         vec3 ww = normalize(ta - ro);
@@ -822,14 +886,11 @@
     }
 
     // Simpler MVP: just use standard matrices
-    function buildMVPSimple(t) {
-      const camAng = t * 0.15;
-      const camY = 0.8 + 0.5 * Math.sin(t * 0.07);
-      const camD = 3.2;
+    function buildMVPSimple() {
       const aspect = canvas.width / canvas.height;
 
-      // Camera pos
-      const eye = [camD * Math.cos(camAng), camY, camD * Math.sin(camAng)];
+      // Use current camera state
+      const eye = [camDistance * Math.cos(camAngle), camElevation, camDistance * Math.sin(camAngle)];
       const target = [0, 0, 0];
       const up = [0, 1, 0];
 
@@ -885,6 +946,9 @@
       bailout: gl.getUniformLocation(sceneProg, 'u_bailout'),
       trap:    gl.getUniformLocation(sceneProg, 'u_trapType'),
       morph:   gl.getUniformLocation(sceneProg, 'u_morph'),
+      camAng:  gl.getUniformLocation(sceneProg, 'u_camAng'),
+      camElev: gl.getUniformLocation(sceneProg, 'u_camElev'),
+      camDist: gl.getUniformLocation(sceneProg, 'u_camDist'),
     };
     const pU = {
       res:   gl.getUniformLocation(postProg, 'u_resolution'),
@@ -913,6 +977,15 @@
       lastNow = sec;
       accTime += dt * speed;
 
+      // Update camera from keyboard input
+      updateCamera(dt);
+
+      // Auto-orbit when enabled
+      if (autoOrbit) {
+        camAngle += dt * speed * 0.15;
+        camElevation = 0.8 + 0.5 * Math.sin(accTime * 0.07);
+      }
+
       // Smooth palette interpolation
       const rate = Math.min(dt * 3.0, 1.0);
       lerpArr(curPal.a, tarPal.a, rate);
@@ -935,6 +1008,9 @@
       gl.uniform1f(sU.bailout, bailoutVal);
       gl.uniform1f(sU.trap, trapTypeVal);
       gl.uniform1f(sU.morph, morphVal);
+      gl.uniform1f(sU.camAng, camAngle);
+      gl.uniform1f(sU.camElev, camElevation);
+      gl.uniform1f(sU.camDist, camDistance);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       // ── Pass 2: post → screen ───────────────────────────
@@ -970,7 +1046,7 @@
         gl.vertexAttribPointer(partA.birth, 1, gl.FLOAT, false, stride, 24);
 
         // Set uniforms
-        const mvp = buildMVPSimple(accTime);
+        const mvp = buildMVPSimple();
         gl.uniformMatrix4fv(partU.mvp, false, mvp);
         gl.uniform1f(partU.time, accTime);
         gl.uniform1f(partU.lifetime, PARTICLE_LIFETIME);

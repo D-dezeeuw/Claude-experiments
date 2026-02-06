@@ -141,6 +141,10 @@
       <label>PARTICLES</label>
       <label class="val" id="particleLabel">OFF</label>
       <input type="range" class="fx" id="particleSlider" min="0" max="100" value="0" step="1">
+      <span class="sep"></span>
+      <label>DIM</label>
+      <label class="val" id="dimLabel">3D</label>
+      <input type="range" class="fx" id="dimSlider" min="0" max="100" value="0" step="1">
     </div>
   </div>
 
@@ -234,18 +238,20 @@
       caLbl.textContent = v;
     });
 
-    // ── Animation sliders (explode, trap, morph, particles) ────
-    let bailoutVal = 2.0, trapTypeVal = 0.0, morphVal = 0.0, particleCount = 0;
+    // ── Animation sliders (explode, trap, morph, particles, dim) ────
+    let bailoutVal = 2.0, trapTypeVal = 0.0, morphVal = 0.0, particleCount = 0, dimVal = 0.0;
     const trapNames = ['POINT', 'LINE-X', 'LINE-Y', 'PLANE', 'SPHERE'];
 
     const explodeSlider  = document.getElementById('explodeSlider');
     const trapSlider     = document.getElementById('trapSlider');
     const morphSlider    = document.getElementById('morphSlider');
     const particleSlider = document.getElementById('particleSlider');
+    const dimSlider      = document.getElementById('dimSlider');
     const explodeLbl     = document.getElementById('explodeLabel');
     const trapLbl        = document.getElementById('trapLabel');
     const morphLbl       = document.getElementById('morphLabel');
     const particleLbl    = document.getElementById('particleLabel');
+    const dimLbl         = document.getElementById('dimLabel');
 
     explodeSlider.addEventListener('input', () => {
       const v = parseInt(explodeSlider.value, 10);
@@ -270,6 +276,11 @@
       particleCount = v * 10;  // 0-100 → 0-1000 particles
       particleLbl.textContent = v === 0 ? 'OFF' : particleCount;
       if (particleCount > 0 && !particlesInitialized) initParticles();
+    });
+    dimSlider.addEventListener('input', () => {
+      const v = parseInt(dimSlider.value, 10);
+      dimVal = v / 100;  // 0-100 → 0.0-1.0
+      dimLbl.textContent = v < 50 ? '3D' : '2D';
     });
 
     // ── Camera state ──────────────────────────────────────────
@@ -409,6 +420,7 @@
       uniform float u_bailout;
       uniform float u_trapType;
       uniform float u_morph;
+      uniform float u_dim;        // 0 = 3D fractals, 1 = 2D Mandelbrot
       uniform float u_camAng;
       uniform float u_camElev;
       uniform float u_camDist;
@@ -491,40 +503,78 @@
         return vec2(length(z) / abs(dr), trap);
       }
 
+      // ── 2D Mandelbrot as 3D surface ─────────────────────────
+      // Classic Mandelbrot on XY plane, extruded with thin slab thickness
+      vec2 mandelbrot2DDE(vec3 pos) {
+        vec2 c = pos.xy * 1.5 - vec2(0.5, 0.0);  // Scale and center
+        vec2 z = vec2(0.0);
+        float trap = 1e10;
+
+        int maxIter = 64;
+        int iter = 0;
+        for (int i = 0; i < 64; i++) {
+          if (dot(z, z) > 4.0) break;
+          z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+          trap = min(trap, length(z));
+          iter = i;
+        }
+
+        // Distance estimate for 2D Mandelbrot
+        float d2d;
+        if (dot(z, z) > 4.0) {
+          // Outside: smooth distance based on escape
+          float zn = length(z);
+          d2d = 0.5 * zn * log(zn) / length(vec2(2.0*z.x, 2.0*z.y));
+          d2d = max(d2d, 0.0001);
+        } else {
+          // Inside: small negative distance
+          d2d = -0.02;
+        }
+
+        // Extrude into 3D with slab thickness
+        float thickness = 0.15;
+        float dz = abs(pos.z) - thickness;
+        float dist = max(d2d, dz);
+
+        return vec2(dist * 0.7, trap);  // Scale factor for stability
+      }
+
       // ── Scene: morphable dual fractals ─────────────────────
       vec2 scene(vec3 p, float t) {
+        // 2D Mandelbrot mode
+        if (u_dim > 0.99) {
+          return mandelbrot2DDE(p);
+        }
+
+        // 3D fractal mode
         float power = 7.0 + sin(t * 0.08) * 2.0;
         float scale = -2.0 + sin(t * 0.06) * 0.5;  // Mandelbox scale
         float sep = 0.65 + 0.3 * sin(t * 0.12);
         float orb = t * 0.1;
         vec3 off = vec3(sep*cos(orb), sep*0.3*sin(orb*1.3), sep*sin(orb));
 
-        // Morph between Mandelbulb and Mandelbox
-        vec2 d1, d2;
-        if (u_morph < 0.5) {
-          // Pure Mandelbulb or blending toward box
-          vec2 bulb1 = mandelbulbDE(p - off, power);
-          vec2 bulb2 = mandelbulbDE(p + off, power + 0.5);
-          vec2 box1  = mandelboxDE((p - off) * 0.8, scale);
-          vec2 box2  = mandelboxDE((p + off) * 0.8, scale);
-          float m = u_morph * 2.0;
-          d1 = vec2(mix(bulb1.x, box1.x, m), mix(bulb1.y, box1.y, m));
-          d2 = vec2(mix(bulb2.x, box2.x, m), mix(bulb2.y, box2.y, m));
-        } else {
-          // Blending toward box or pure Mandelbox
-          vec2 bulb1 = mandelbulbDE(p - off, power);
-          vec2 bulb2 = mandelbulbDE(p + off, power + 0.5);
-          vec2 box1  = mandelboxDE((p - off) * 0.8, scale);
-          vec2 box2  = mandelboxDE((p + off) * 0.8, scale);
-          float m = (u_morph - 0.5) * 2.0;
-          d1 = vec2(mix(bulb1.x, box1.x, 0.5 + m * 0.5), mix(bulb1.y, box1.y, 0.5 + m * 0.5));
-          d2 = vec2(mix(box2.x, box2.x, m), mix(bulb2.y, box2.y, 0.5 + m * 0.5));
-        }
+        // Compute both fractal types
+        vec2 bulb1 = mandelbulbDE(p - off, power);
+        vec2 bulb2 = mandelbulbDE(p + off, power + 0.5);
+        vec2 box1  = mandelboxDE((p - off) * 0.8, scale);
+        vec2 box2  = mandelboxDE((p + off) * 0.8, scale);
 
+        // Blend between Mandelbulb (0) and Mandelbox (1)
+        vec2 d1 = mix(bulb1, box1, u_morph);
+        vec2 d2 = mix(bulb2, box2, u_morph);
+
+        // Smooth-min union of both shapes
         float k = 0.35;
         float h = clamp(0.5 + 0.5*(d1.x - d2.x)/k, 0.0, 1.0);
-        return vec2(mix(d1.x, d2.x, h) - k*h*(1.0-h),
-                     mix(d1.y, d2.y, h));
+        vec2 result3D = vec2(mix(d1.x, d2.x, h) - k*h*(1.0-h),
+                              mix(d1.y, d2.y, h));
+
+        // Blend between 3D and 2D if transitioning
+        if (u_dim < 0.01) {
+          return result3D;
+        }
+        vec2 result2D = mandelbrot2DDE(p);
+        return mix(result3D, result2D, u_dim);
       }
 
       // ── Tetrahedron normal ────────────────────────────────
@@ -946,6 +996,7 @@
       bailout: gl.getUniformLocation(sceneProg, 'u_bailout'),
       trap:    gl.getUniformLocation(sceneProg, 'u_trapType'),
       morph:   gl.getUniformLocation(sceneProg, 'u_morph'),
+      dim:     gl.getUniformLocation(sceneProg, 'u_dim'),
       camAng:  gl.getUniformLocation(sceneProg, 'u_camAng'),
       camElev: gl.getUniformLocation(sceneProg, 'u_camElev'),
       camDist: gl.getUniformLocation(sceneProg, 'u_camDist'),
@@ -1008,6 +1059,7 @@
       gl.uniform1f(sU.bailout, bailoutVal);
       gl.uniform1f(sU.trap, trapTypeVal);
       gl.uniform1f(sU.morph, morphVal);
+      gl.uniform1f(sU.dim, dimVal);
       gl.uniform1f(sU.camAng, camAngle);
       gl.uniform1f(sU.camElev, camElevation);
       gl.uniform1f(sU.camDist, camDistance);

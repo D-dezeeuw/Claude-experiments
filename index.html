@@ -1,63 +1,140 @@
+<!--
+  ============================================================
+  TODO — Future Upgrades
+  ============================================================
+
+  GEOMETRY & SHAPES
+  [ ] Hybrid fractals — mix Mandelbulb iterations with box-folding
+      (Mandelbox) transforms mid-loop. Part organic, part architectural.
+  [ ] Kaleidoscopic IFS — iterated mirror folds before each iteration
+      step. Produces cathedral-like infinite corridors and crystal lattices.
+  [ ] Mandelbox — sharp, angular, city-like recursion with infinite
+      interior rooms. Good contrast piece next to the organic Mandelbulb.
+  [ ] Cross-section slicer — animated clipping plane cutting through the
+      Mandelbulb revealing interior structure. max(sdf, plane) in scene fn.
+  [ ] Power integer walk — step through integer powers (2→12) with smooth
+      interpolation. Each integer produces a distinct shape.
+  [ ] Quaternion Julia sets — 4D fractal sliced to 3D. Organic/coral-like
+      forms. Same raymarching setup, different DE.
+
+  INTERACTION
+  [ ] Mouse orbit — click-drag to rotate camera. Store azimuth/elevation,
+      blend with auto-orbit when idle.
+  [ ] Scroll zoom — mouse wheel moves camera closer/further with clamping.
+  [ ] Parameter sliders panel — expose power, separation, smooth-min k,
+      and light direction as live sliders.
+  [ ] Touch + gyroscope — DeviceOrientationEvent to steer camera by
+      tilting the phone on mobile.
+  [ ] Fullscreen + screenshot — double-click for fullscreen, press S to
+      save current frame as PNG via canvas.toBlob().
+
+  VISUAL UPGRADES
+  [ ] Soft shadows — secondary short-range raymarch toward light for
+      dramatic self-shadowing in crevices (~30 extra steps, hit pixels only).
+  [ ] Glow / bloom — post-process pass: render to texture, blur bright
+      areas, composite. Needs second framebuffer.
+  [ ] Subsurface scattering fake — march a few steps into the surface
+      along the light direction. Thinner regions glow warmer (wax/jade feel).
+  [ ] Environment reflection — reflect ray off normal, sample a procedural
+      sky gradient or starfield for polished/metallic surface.
+  [ ] Depth of field — accumulate multiple frames with jittered ray origins
+      around a focal plane. Needs temporal accumulation buffer.
+  [ ] Palette presets — cycle with key press: orange/purple, ice blue/white,
+      molten red/gold, monochrome noir, radioactive green.
+  [ ] Chromatic aberration — offset R/G/B channels slightly in screen space.
+
+  ANIMATION & DYNAMICS
+  [ ] Fractal explosion — animate bailout radius from 2.0 down to 0.5 and
+      back. Surface shatters into fragments, then reforms.
+  [ ] Morph between fractal types — blend DE of Mandelbulb and Mandelbox
+      with a mix parameter for smooth organic-to-geometric transition.
+  [ ] Orbit trap variety — swap trap geometry: point, line, plane, sphere.
+      Each produces different color patterns. Animate between them.
+  [ ] Particle system — emit GL_POINTS from fractal surface that drift
+      outward. Separate draw call with texture-based particle sim.
+
+  AUDIO
+  [ ] Microphone reactive — getUserMedia + AnalyserNode FFT driving power,
+      separation, and color shift. Fractal pulses and morphs to sound.
+  [ ] Music visualizer mode — audio file or stream input. Low frequencies
+      drive zoom/power, highs drive color.
+  [ ] Procedural ambient — Web Audio oscillators generating a slow evolving
+      drone tied to fractal state. Sound and image as one system.
+
+  ============================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Map of Gran Canaria</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-            background: #000;
-        }
-
-        #container {
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 5px;
-            font-size: 14px;
-            max-width: 300px;
-            z-index: 100;
-        }
-
-        #info h1 {
-            font-size: 20px;
-            margin-bottom: 10px;
-        }
-
-        #info p {
-            margin: 5px 0;
-            line-height: 1.5;
-        }
-
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px 40px;
-            border-radius: 10px;
-            display: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Experiments</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d0d1a;
+      color: #e0dfe6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4rem 1.5rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    p.subtitle {
+      color: #9a96b0;
+      margin-bottom: 3rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      max-width: 720px;
+      width: 100%;
+    }
+    .tag-raymarching { background: #2a2218; color: #cfaa6f; }
+    .card {
+      background: #16162a;
+      border: 1px solid #2a2a44;
+      border-radius: 12px;
+      padding: 1.75rem;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: #c96d30;
+      transform: translateY(-3px);
+    }
+    .card h2 {
+      font-size: 1.15rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: #8886a0;
+      line-height: 1.5;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      margin-top: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tag-webgl  { background: #1e2a1e; color: #6fcf6f; }
+    .tag-shader { background: #2a1e2a; color: #cf6fcf; }
+    .tag-threejs { background: #1e222a; color: #6fa0cf; }
+  </style>
 </head>
 <body>
     <div id="container"></div>
@@ -82,5 +159,28 @@
 
     <!-- Main application script -->
     <script src="js/main.js"></script>
+  <h1>Claude Experiments</h1>
+  <p class="subtitle">WebGL and shader experiments</p>
+  <div class="grid">
+    <a class="card" href="mandelbrot-shader.html">
+      <h2>Mandelbrot Shader</h2>
+      <p>Procedural GLSL fragment shader rendering an animated Mandelbrot fractal with smooth zoom and orange-purple palette.</p>
+      <span class="tag tag-webgl">WebGL</span>
+      <span class="tag tag-shader">GLSL</span>
+    </a>
+    <a class="card" href="mandelbulb-3d.html">
+      <h2>Mandelbulb 3D</h2>
+      <p>Two raymarched Mandelbulbs merging via smooth-minimum union with SSS, bloom, DoF, chromatic aberration, and 5 palette presets.</p>
+      <span class="tag tag-webgl">WebGL</span>
+      <span class="tag tag-shader">GLSL</span>
+      <span class="tag tag-raymarching">Raymarching</span>
+    </a>
+    <a class="card" href="gran-canaria.html">
+      <h2>Gran Canaria 3D Map</h2>
+      <p>Interactive 3D terrain map of Gran Canaria with procedural height data and orbit controls.</p>
+      <span class="tag tag-webgl">WebGL</span>
+      <span class="tag tag-threejs">Three.js</span>
+    </a>
+  </div>
 </body>
 </html>

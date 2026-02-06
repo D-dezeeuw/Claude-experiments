@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot GLSL Shader</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .controls {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: rgba(10, 8, 20, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 0.6rem 1.25rem;
+      z-index: 10;
+      user-select: none;
+      transition: opacity 0.4s;
+    }
+    .controls:hover { opacity: 1 !important; }
+    .controls label {
+      color: rgba(255,255,255,0.5);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .controls .val {
+      color: rgba(255,255,255,0.85);
+      font-variant-numeric: tabular-nums;
+      min-width: 3.2em;
+      text-align: center;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 160px;
+      height: 4px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #c96d30;
+      border: 2px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glCanvas"></canvas>
+
+  <div class="controls" id="controls">
+    <label>SPEED</label>
+    <label class="val" id="speedLabel">0.50</label>
+    <input type="range" id="speedSlider" min="-100" max="100" value="50" step="1">
+  </div>
+
+  <script>
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+    if (!gl) {
+      document.body.innerHTML = '<p style="color:#fff;padding:2em;">WebGL not supported.</p>';
+      throw new Error('WebGL not supported');
+    }
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Speed slider ---
+    const slider = document.getElementById('speedSlider');
+    const speedLabel = document.getElementById('speedLabel');
+    const controlsEl = document.getElementById('controls');
+    let speed = 0.5;
+
+    slider.addEventListener('input', () => {
+      speed = parseInt(slider.value, 10) / 100;
+      speedLabel.textContent = speed.toFixed(2);
+    });
+
+    // Auto-fade controls after inactivity
+    let fadeTimer;
+    function showControls() {
+      controlsEl.style.opacity = '1';
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(() => { controlsEl.style.opacity = '0.35'; }, 3000);
+    }
+    document.addEventListener('mousemove', showControls);
+    document.addEventListener('touchstart', showControls);
+    showControls();
+
+    // --- Accumulated time (integrates speed so direction/pause works smoothly) ---
+    let accTime = 0;
+    let lastNow = 0;
+
+    // --- Vertex Shader ---
+    const vertSrc = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    // --- Fragment Shader ---
+    const fragSrc = `
+      precision highp float;
+
+      uniform vec2 u_resolution;
+      uniform float u_time;
+
+      // --- Color palette: deep purple -> burnt orange -> pale gold ---
+      vec3 palette(float t) {
+        vec3 a = vec3(0.30, 0.10, 0.40);
+        vec3 b = vec3(0.60, 0.40, 0.30);
+        vec3 c = vec3(1.00, 0.80, 0.60);
+        vec3 d = vec3(0.00, 0.15, 0.55);
+        return a + b * cos(6.28318 * (c * t + d));
+      }
+
+      // --- Curated seed points along the Mandelbrot boundary ---
+      // Each lives in a visually rich region with deep self-similar structure.
+      // Weighted-sum selection avoids sequential dependency issues.
+      vec2 seedPoint(float idx) {
+        float i = mod(idx, 8.0);
+
+        float w0 = 1.0 - step(1.0, i);
+        float w1 = step(1.0, i) * (1.0 - step(2.0, i));
+        float w2 = step(2.0, i) * (1.0 - step(3.0, i));
+        float w3 = step(3.0, i) * (1.0 - step(4.0, i));
+        float w4 = step(4.0, i) * (1.0 - step(5.0, i));
+        float w5 = step(5.0, i) * (1.0 - step(6.0, i));
+        float w6 = step(6.0, i) * (1.0 - step(7.0, i));
+        float w7 = step(7.0, i);
+
+        return vec2(-0.743643887, 0.131825905)  * w0   // Seahorse valley
+             + vec2(-0.1011,      0.9563)        * w1   // Double spiral
+             + vec2( 0.281717921, 0.5771052841)  * w2   // Elephant valley
+             + vec2(-0.761574,   -0.0847596)     * w3   // Spiral arm
+             + vec2(-1.25066,     0.02012)       * w4   // Mini-brot antenna
+             + vec2(-0.0452407,   0.9868162)     * w5   // Starfish region
+             + vec2(-0.122561,    0.744862)      * w6   // Period-3 bulb tip
+             + vec2(-1.401155,    0.0)           * w7;  // Needle tip
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+
+        float t = u_time;
+
+        // ── Endless forward zoom ──────────────────────────────────
+        // Always diving deeper. Each cycle goes from 4x to 8192x
+        // into a seed point, then fades through black and starts
+        // the next dive at a new location. No breathing, no reversal.
+        float cycleDur = 24.0;
+        float rawPhase = t / cycleDur;
+        float cycleIdx = floor(rawPhase);
+        float phase = fract(rawPhase);
+
+        // Ease the zoom ramp so it starts gently, accelerates, then
+        // eases into the deepest point before the fade
+        float ep = smoothstep(0.0, 1.0, phase);
+
+        // Always-forward zoom: 4x → 8192x
+        float zoom = pow(2.0, 2.0 + ep * 11.0);
+
+        // Seed point for this cycle (no morphing -- fade hides the jump)
+        vec2 target = seedPoint(cycleIdx);
+
+        // ── Fade mask ─────────────────────────────────────────────
+        // Brief fade to/from black at cycle boundaries hides the
+        // coordinate reset. ~1.5s fade at each end of the cycle.
+        float fadeIn  = smoothstep(0.0, 0.07, phase);
+        float fadeOut = 1.0 - smoothstep(0.93, 1.0, phase);
+        float fade = fadeIn * fadeOut;
+
+        // ── Continuous slow rotation ──────────────────────────────
+        // Tied to accumulated time so slider controls it naturally
+        float angle = t * 0.03;
+        float ca = cos(angle);
+        float sa = sin(angle);
+        vec2 ruv = vec2(uv.x * ca - uv.y * sa,
+                        uv.x * sa + uv.y * ca);
+
+        // Map screen → fractal coordinates
+        float fx = ruv.x / zoom + target.x;
+        float fy = ruv.y / zoom + target.y;
+
+        // ── Mandelbrot iteration (smooth escape-time) ─────────────
+        float x = 0.0;
+        float y = 0.0;
+        float x2 = 0.0;
+        float y2 = 0.0;
+        const int MAX_ITER = 512;
+        int iter = MAX_ITER;
+
+        for (int i = 0; i < 512; i++) {
+          if (x2 + y2 > 256.0) {
+            iter = i;
+            break;
+          }
+          y = 2.0 * x * y + fy;
+          x = x2 - y2 + fx;
+          x2 = x * x;
+          y2 = y * y;
+        }
+
+        // ── Coloring ──────────────────────────────────────────────
+        vec3 col;
+        if (iter == MAX_ITER) {
+          col = vec3(0.02, 0.0, 0.05);
+        } else {
+          float sl = float(iter) - log2(log2(x2 + y2)) + 4.0;
+          float smoothVal = sl / float(MAX_ITER);
+
+          // Palette shifts with zoom depth for evolving color
+          float depthShift = log2(zoom) * 0.06;
+          float colorIdx = sqrt(smoothVal) * 4.0 + depthShift + t * 0.015;
+          col = palette(colorIdx);
+
+          // Warm glow near the boundary
+          float glow = exp(-smoothVal * 8.0);
+          col += vec3(0.6, 0.2, 0.0) * glow * 0.4;
+
+          col = pow(col, vec3(0.85));
+        }
+
+        // Vignette + fade mask
+        float vig = 1.0 - 0.3 * length(uv);
+        col *= vig * fade;
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    // --- Compile shader ---
+    function compileShader(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
+
+    const vertShader = compileShader(gl.VERTEX_SHADER, vertSrc);
+    const fragShader = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+    }
+    gl.useProgram(program);
+
+    // --- Full-screen quad ---
+    const verts = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+    const aPos = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    // --- Uniforms ---
+    const uRes = gl.getUniformLocation(program, 'u_resolution');
+    const uTime = gl.getUniformLocation(program, 'u_time');
+
+    // --- Render loop ---
+    function render(now) {
+      const nowSec = now * 0.001;
+      const dt = lastNow === 0 ? 0 : nowSec - lastNow;
+      lastNow = nowSec;
+
+      accTime += dt * speed;
+
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, accTime);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

@@ -33,7 +33,7 @@ export class GPUPass {
      * @param {Object<string, {texture, unit}>} opts.textures — input textures
      * @param {Object<string, number|number[]>} opts.uniforms — uniform values
      */
-    execute({ target = null, width, height, textures = {}, uniforms = {} }) {
+    execute({ target = null, width, height, textures = {}, uniforms = {}, intUniforms = {} }) {
         const gl = this.gl;
 
         gl.useProgram(this.program);
@@ -63,6 +63,13 @@ export class GPUPass {
                     case 4: gl.uniform4fv(loc, value); break;
                 }
             }
+        }
+
+        // Set integer uniforms
+        for (const [name, value] of Object.entries(intUniforms)) {
+            const loc = this._loc(name);
+            if (loc === null) continue;
+            gl.uniform1i(loc, value);
         }
 
         // Draw fullscreen triangle (3 vertices, no buffer)

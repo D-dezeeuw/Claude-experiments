@@ -1,27 +1,60 @@
 /**
  * Gaussian Fluids — Main Application
  *
- * Phase 1: GPGPU foundation with pipeline verification.
- * Subsequent phases add simulation, projection, and visualization.
+ * Phases 1-2: GPGPU pipeline + Gaussian Spatial Representation.
+ * Evaluates velocity field from Gaussians with analytical vorticity
+ * and divergence, displayed via colormaps.
  */
 
 import { initContext } from './gpu/context.js';
-import { createFloatTexture, createFBO, PingPong, readbackTexture } from './gpu/textures.js';
+import { createFloatTexture, createFBO } from './gpu/textures.js';
 import { GPUPass } from './gpu/pass.js';
+import { GAUSSIAN_EVAL, COLORMAPS } from './gpu/glsl-lib.js';
+import { GaussianField } from './simulation/gaussians.js';
+import { PRESETS } from './simulation/initial-conditions.js';
 
 // ---------------------------------------------------------------------------
 // Shader sources
 // ---------------------------------------------------------------------------
 
-const WRITE_TEST_FRAG = `#version 300 es
+const EVAL_FIELD_FRAG = `#version 300 es
 precision highp float;
 in vec2 v_uv;
-out vec4 outColor;
-uniform float u_time;
+out vec4 outField;
+
+uniform sampler2D t_posScale;
+uniform sampler2D t_rotWeight;
+uniform int u_N;
+uniform int u_texSize;
+
+${GAUSSIAN_EVAL}
+
 void main() {
-    float s = sin(v_uv.x * 20.0 + u_time) * 0.5 + 0.5;
-    float c = cos(v_uv.y * 20.0 - u_time * 0.7) * 0.5 + 0.5;
-    outColor = vec4(s, c, s * c, 1.0);
+    vec2 x = v_uv;
+    vec2 vel = vec2(0.0);
+    float vort = 0.0;
+    float divg = 0.0;
+
+    for (int i = 0; i < 4096; i++) {
+        if (i >= u_N) break;
+
+        vec4 ps = texelFetch(t_posScale, gIdx(i, u_texSize), 0);
+        vec4 rw = texelFetch(t_rotWeight, gIdx(i, u_texSize), 0);
+
+        vec2 mu = ps.xy;
+        mat2 sigInv = getInvCovariance(rw.x, ps.zw);
+        vec2 d = x - mu;
+        float g = evalGaussian(x, mu, sigInv);
+        vec2 w = rw.yz;
+
+        vel += w * g;
+
+        vec2 gG = gradGaussian(d, sigInv, g);
+        vort += w.y * gG.x - w.x * gG.y;
+        divg += w.x * gG.x + w.y * gG.y;
+    }
+
+    outField = vec4(vel, vort, divg);
 }
 `;
 
@@ -29,24 +62,68 @@ const DISPLAY_FRAG = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 outColor;
-uniform sampler2D u_tex;
+
+uniform sampler2D u_field;
+uniform int u_mode;
+uniform float u_scale;
+
+${COLORMAPS}
+
+vec3 hsl2rgb(float h, float s, float l) {
+    vec3 rgb = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return l + s * (rgb - 0.5) * (1.0 - abs(2.0 * l - 1.0));
+}
+
 void main() {
-    outColor = texture(u_tex, v_uv);
+    vec4 f = texture(u_field, v_uv);
+    vec2 vel = f.xy;
+    float vort = f.z;
+
+    vec3 color;
+    if (u_mode == 1) {
+        // Vorticity: diverging coolwarm
+        color = coolwarm(vort / u_scale);
+    } else if (u_mode == 2) {
+        // Velocity magnitude: viridis
+        color = viridis(length(vel) / u_scale);
+    } else if (u_mode == 3) {
+        // Debug: magma intensity
+        color = magma(length(vel) / u_scale);
+    } else {
+        // Dye: hue from direction, brightness from magnitude
+        float mag = length(vel);
+        float angle = atan(vel.y, vel.x);
+        float hue = angle / 6.2832 + 0.5;
+        color = hsl2rgb(hue, 0.8, 0.05 + clamp(mag / u_scale, 0.0, 1.0) * 0.55);
+    }
+    outColor = vec4(color, 1.0);
 }
 `;
+
+// ---------------------------------------------------------------------------
+// Quality presets
+// ---------------------------------------------------------------------------
+
+const QUALITY = [
+    { label: 'Low',    nx: 16, ny: 16, evalRes: 128 },
+    { label: 'Medium', nx: 24, ny: 24, evalRes: 256 },
+    { label: 'High',   nx: 32, ny: 32, evalRes: 384 },
+];
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let gl, caps, canvas;
-let statsEl;
-let writePass, displayPass;
-let pingPong;
-let time = 0;
-let frameCount = 0;
-let lastFpsTime = 0;
-let fps = 0;
+let gl, canvas, statsEl;
+let evalPass, displayPass;
+let fieldTex, fieldFBO;
+let field; // GaussianField
+let currentPreset = 'taylor-green';
+let currentQuality = 1;
+let vizMode = 1; // default to vorticity
+let vizScale = 1.0;
+
+let frameCount = 0, lastFpsTime = 0, fps = 0;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -56,29 +133,19 @@ function init() {
     canvas = document.getElementById('c');
     statsEl = document.getElementById('stats');
 
-    // Size canvas to window
     resize();
     window.addEventListener('resize', resize);
 
-    // Init WebGL 2
     const ctx = initContext(canvas);
     gl = ctx.gl;
-    caps = ctx.caps;
+    console.log('WebGL 2 ready', ctx.caps);
 
-    // Log capabilities
-    console.log('WebGL 2 initialized', caps);
-
-    // Phase 1: Create GPGPU passes
-    writePass = new GPUPass(gl, WRITE_TEST_FRAG);
+    evalPass = new GPUPass(gl, EVAL_FIELD_FRAG);
     displayPass = new GPUPass(gl, DISPLAY_FRAG);
 
-    // Create ping-pong textures at 512x512
-    pingPong = new PingPong(gl, 512, 512);
+    setupUI();
+    buildField();
 
-    // Verify float readback works
-    verifyPipeline();
-
-    // Start render loop
     lastFpsTime = performance.now();
     requestAnimationFrame(loop);
 }
@@ -90,38 +157,116 @@ function resize() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1 Verification
+// Field construction
 // ---------------------------------------------------------------------------
 
-function verifyPipeline() {
-    // Write a known pattern to the float texture
-    writePass.execute({
-        target: pingPong.writeFBO,
-        width: 512,
-        height: 512,
-        uniforms: { u_time: 0.0 },
-    });
-    pingPong.swap();
+function buildField() {
+    const q = QUALITY[currentQuality];
+    const presetFn = PRESETS[currentPreset];
 
-    // Read back and verify
-    const data = pingPong.readback();
-    const sample = data.slice(0, 4);
-    const expected = [
-        Math.sin(0.0) * 0.5 + 0.5,  // s at uv.x ≈ 0
-        Math.cos(0.0) * 0.5 + 0.5,  // c at uv.y ≈ 0
-    ];
+    field = new GaussianField(q.nx, q.ny);
+    field.initGrid();
 
-    // Allow some tolerance for GPU float precision
-    const ok = Math.abs(sample[0] - expected[0]) < 0.05 &&
-               Math.abs(sample[1] - expected[1]) < 0.05;
-
-    console.log(`Pipeline verification: ${ok ? 'PASS' : 'FAIL'}`,
-        { gpu: [sample[0].toFixed(4), sample[1].toFixed(4)],
-          cpu: [expected[0].toFixed(4), expected[1].toFixed(4)] });
-
-    if (!ok) {
-        console.warn('Float texture readback mismatch — GPU precision or driver issue');
+    if (presetFn !== PRESETS['free']) {
+        statsEl.textContent = `Fitting ${q.nx * q.ny} Gaussians...`;
+        // Defer fitting so the UI can update
+        setTimeout(() => {
+            field.fitToField(presetFn, 40);
+            field.uploadToGPU(gl);
+            createEvalTextures(q.evalRes);
+            autoScale(q.evalRes);
+            console.log(`Built: ${field.N} Gaussians, ${q.evalRes}x${q.evalRes} eval`);
+        }, 10);
+    } else {
+        field.uploadToGPU(gl);
+        createEvalTextures(q.evalRes);
+        vizScale = 1.0;
     }
+}
+
+function createEvalTextures(res) {
+    if (fieldTex) gl.deleteTexture(fieldTex);
+    if (fieldFBO) gl.deleteFramebuffer(fieldFBO);
+    fieldTex = createFloatTexture(gl, res, res);
+    fieldFBO = createFBO(gl, fieldTex);
+}
+
+function autoScale(res) {
+    evalFieldToTexture(res);
+
+    const buf = new Float32Array(res * res * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fieldFBO);
+    gl.readPixels(0, 0, res, res, gl.RGBA, gl.FLOAT, buf);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    let maxVel = 0, maxVort = 0;
+    for (let i = 0; i < buf.length; i += 4) {
+        const vm = Math.sqrt(buf[i] * buf[i] + buf[i + 1] * buf[i + 1]);
+        const va = Math.abs(buf[i + 2]);
+        if (vm > maxVel) maxVel = vm;
+        if (va > maxVort) maxVort = va;
+    }
+    vizScale = Math.max(maxVel, maxVort, 0.01);
+}
+
+function evalFieldToTexture(res) {
+    evalPass.execute({
+        target: fieldFBO,
+        width: res,
+        height: res,
+        textures: {
+            t_posScale: field.texPosScale,
+            t_rotWeight: field.texRotWeight,
+        },
+        intUniforms: {
+            u_N: field.N,
+            u_texSize: field.texSize,
+        },
+    });
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+
+function setupUI() {
+    const presetEl = document.getElementById('preset');
+    const qualEl   = document.getElementById('quality');
+    const viscEl   = document.getElementById('viscosity');
+    const brushEl  = document.getElementById('brushSize');
+    const vizEl    = document.getElementById('vizMode');
+    const qualVal  = document.getElementById('qualVal');
+    const viscVal  = document.getElementById('viscVal');
+    const brushVal = document.getElementById('brushVal');
+
+    presetEl.value = currentPreset;
+    vizEl.value = 'vorticity';
+
+    presetEl.addEventListener('change', () => {
+        currentPreset = presetEl.value;
+        buildField();
+    });
+
+    qualEl.value = currentQuality;
+    qualVal.textContent = QUALITY[currentQuality].label;
+    qualEl.addEventListener('input', () => {
+        currentQuality = parseInt(qualEl.value);
+        qualVal.textContent = QUALITY[currentQuality].label;
+        buildField();
+    });
+
+    viscEl.addEventListener('input', () => {
+        viscVal.textContent = (viscEl.value * 0.0001).toFixed(4);
+    });
+
+    brushEl.addEventListener('input', () => {
+        brushVal.textContent = (brushEl.value * 0.003).toFixed(2);
+    });
+
+    const modeMap = { 'dye': 0, 'vorticity': 1, 'velocity': 2, 'debug': 3 };
+    vizEl.addEventListener('change', () => {
+        vizMode = modeMap[vizEl.value] ?? 0;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -130,36 +275,32 @@ function verifyPipeline() {
 
 function loop(now) {
     requestAnimationFrame(loop);
-
-    time = now * 0.001;
     frameCount++;
 
-    // FPS counter
     if (now - lastFpsTime >= 500) {
         fps = Math.round(frameCount / ((now - lastFpsTime) * 0.001));
         frameCount = 0;
         lastFpsTime = now;
     }
 
-    // Phase 1: Write animated pattern to float texture
-    writePass.execute({
-        target: pingPong.writeFBO,
-        width: 512,
-        height: 512,
-        uniforms: { u_time: time },
-    });
-    pingPong.swap();
+    if (!field || !field.texPosScale) return; // still loading
 
-    // Display the float texture to screen
+    const q = QUALITY[currentQuality];
+
+    // Evaluate Gaussian field to texture
+    evalFieldToTexture(q.evalRes);
+
+    // Display with colormap
     displayPass.execute({
         target: null,
         width: canvas.width,
         height: canvas.height,
-        textures: { u_tex: pingPong.read },
+        textures: { u_field: fieldTex },
+        uniforms: { u_scale: vizScale },
+        intUniforms: { u_mode: vizMode },
     });
 
-    // Update stats
-    statsEl.textContent = `${fps} fps | ${canvas.width}x${canvas.height} | Phase 1: GPGPU Pipeline OK`;
+    statsEl.textContent = `${fps} fps | ${field.N} gaussians | ${q.evalRes}\u00B2 eval | scale ${vizScale.toFixed(2)}`;
 }
 
 // ---------------------------------------------------------------------------

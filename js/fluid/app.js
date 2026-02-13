@@ -163,6 +163,7 @@ let brushRadius = 0.08;
 let viscosity = 0.001;
 let vortexSign = 1; // alternates +1/-1 for clockwise/counter-clockwise taps
 let needsUpload = false; // flag to batch GPU uploads
+let originalPositions = null; // saved grid positions for spring-back force
 
 // ---------------------------------------------------------------------------
 // Init
@@ -207,6 +208,7 @@ function buildField() {
 
     field = new GaussianField(q.nx, q.ny);
     field.initGrid();
+    originalPositions = new Float32Array(field.positions);
 
     if (presetFn !== PRESETS['free']) {
         statsEl.textContent = `Fitting ${q.nx * q.ny} Gaussians...`;
@@ -436,6 +438,82 @@ function adjustScale() {
 }
 
 /**
+ * Advect Gaussian centers through the velocity field (Euler integration).
+ * Each Gaussian moves according to the summed velocity from all active Gaussians.
+ * A weak spring force pulls positions back toward the original grid to maintain coverage.
+ */
+function advectStep(dt) {
+    if (!field || !originalPositions) return;
+
+    const N = field.N;
+
+    // Precompute inverse covariances for active (non-zero weight) Gaussians
+    const invCov = new Float32Array(N * 3); // [a, b, d] packed per Gaussian
+    const active = new Uint8Array(N);
+    let activeCount = 0;
+
+    for (let j = 0; j < N; j++) {
+        const wx = field.weights[j * 2];
+        const wy = field.weights[j * 2 + 1];
+        if (Math.abs(wx) < 1e-7 && Math.abs(wy) < 1e-7) continue;
+
+        active[j] = 1;
+        activeCount++;
+
+        const theta = field.rotations[j];
+        const sx_inv = 1 / Math.exp(field.logScales[j * 2]);
+        const sy_inv = 1 / Math.exp(field.logScales[j * 2 + 1]);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const r00 = c * sx_inv, r01 = s * sx_inv;
+        const r10 = -s * sy_inv, r11 = c * sy_inv;
+        invCov[j * 3]     = r00 * r00 + r10 * r10;
+        invCov[j * 3 + 1] = r00 * r01 + r10 * r11;
+        invCov[j * 3 + 2] = r01 * r01 + r11 * r11;
+    }
+
+    if (activeCount === 0) return;
+
+    // Evaluate velocity at each Gaussian center and advect
+    for (let i = 0; i < N; i++) {
+        const px = field.positions[i * 2];
+        const py = field.positions[i * 2 + 1];
+        let ux = 0, uy = 0;
+
+        for (let j = 0; j < N; j++) {
+            if (!active[j]) continue;
+
+            const dx = px - field.positions[j * 2];
+            const dy = py - field.positions[j * 2 + 1];
+            const a = invCov[j * 3], b = invCov[j * 3 + 1], d = invCov[j * 3 + 2];
+            const exponent = -0.5 * (a * dx * dx + 2 * b * dx * dy + d * dy * dy);
+            if (exponent < -6) continue; // negligible contribution
+
+            const g = Math.exp(exponent);
+            ux += field.weights[j * 2] * g;
+            uy += field.weights[j * 2 + 1] * g;
+        }
+
+        // Euler step
+        field.positions[i * 2]     += dt * ux;
+        field.positions[i * 2 + 1] += dt * uy;
+    }
+
+    // Weak spring force toward original grid (prevents drift, maintains coverage)
+    const spring = 1.5;
+    for (let i = 0; i < N; i++) {
+        field.positions[i * 2]     += spring * dt * (originalPositions[i * 2]     - field.positions[i * 2]);
+        field.positions[i * 2 + 1] += spring * dt * (originalPositions[i * 2 + 1] - field.positions[i * 2 + 1]);
+    }
+
+    // Clamp to domain
+    for (let i = 0; i < N * 2; i++) {
+        field.positions[i] = Math.max(0.001, Math.min(0.999, field.positions[i]));
+    }
+
+    needsUpload = true;
+}
+
+/**
  * Apply viscous decay: exponential damping of all weights each frame.
  */
 function applyDecay(dt) {
@@ -523,10 +601,13 @@ function loop(now) {
 
     if (!field || !field.texPosScale) return; // still loading
 
-    // Apply viscous decay
+    // Apply viscous decay (modifies weights)
     applyDecay(dt);
 
-    // Upload modified weights if needed
+    // Advect Gaussian centers through the velocity field (modifies positions)
+    advectStep(dt);
+
+    // Upload modified weights + positions if needed
     if (needsUpload) {
         field.uploadToGPU(gl);
         needsUpload = false;

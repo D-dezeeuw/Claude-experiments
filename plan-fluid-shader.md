@@ -1014,20 +1014,63 @@ The projection step in 3D follows the same structure as 2D but:
 
 > Make it a true interactive demo.
 
-### Step 9.1: Mouse/Touch Force Injection
+### Step 9.1: Mouse/Touch Force Injection — **IMPLEMENTED**
 
-```javascript
-// On mouse drag:
-//   1. Map screen coordinates to domain coordinates
-//   2. Compute force direction from mouse velocity (dx, dy)
-//   3. Add a temporary "force Gaussian" to the field:
-//      - Center at mouse position
-//      - Weight proportional to mouse velocity
-//      - Scale proportional to brush radius (user-adjustable)
-//   4. This effectively injects vorticity into the flow
-```
+Implemented in `js/fluid/app.js` (`setupMouse()`, `applyMouseForce()`):
 
-### Step 9.2: Dye Injection
+- Mouse and touch event tracking with UV coordinate mapping (Y-flipped)
+- **Drag to stir**: on mousemove/touchmove while pressed, nearby Gaussian weights are
+  pushed in the direction of mouse velocity with Gaussian distance falloff
+- **GPU-side overlay**: the evaluation shader adds a real-time mouse force contribution
+  (`u_mousePos`, `u_mouseVel`, `u_mouseActive`, `u_brushRadius` uniforms) for instant
+  visual feedback before CPU weights are uploaded
+- Brush radius controlled by UI slider
+- Touch support with `passive: false` and `preventDefault` for mobile
+
+### Step 9.2: Vortex Injection on Click/Tap — **IMPLEMENTED**
+
+Implemented in `js/fluid/app.js` (`injectVortex()`):
+
+- On mousedown/touchstart, a rotational velocity pattern is injected at the click position
+- Nearby Gaussian weights receive perpendicular-to-radial contributions: `w_x += -dy`, `w_y += dx`
+- Vortex direction alternates clockwise / counter-clockwise on each tap
+- Strength and radius controlled by brush size slider
+
+### Step 9.3: Viscous Decay — **IMPLEMENTED**
+
+Implemented in `js/fluid/app.js` (`applyDecay()`):
+
+- Each frame, all Gaussian weights are multiplied by `exp(-viscosity * dt * 60)`
+- Viscosity controlled by the UI slider (range 0.0–0.01)
+- `vizScale` gradually shrinks as weights decay to keep colors vivid
+- Scale automatically grows when new forces are injected (`adjustScale()`)
+
+### Step 9.4: Brush Cursor Visualization — **IMPLEMENTED**
+
+Implemented in the display fragment shader (`DISPLAY_FRAG`):
+
+- A translucent white ring is drawn at the mouse position showing the brush radius
+- Uses `smoothstep` for anti-aliased edges
+- Only visible when the cursor is over the canvas (`u_cursorActive` uniform)
+
+### Step 9.5: GUI Controls — **PARTIALLY IMPLEMENTED**
+
+Custom HTML sliders in `fluid.html`, wired in `setupUI()`:
+
+| Control | Parameter | Status |
+|---------|-----------|--------|
+| Preset | scene selection | **Done** — Taylor-Green, Vortex Pair, Free Canvas |
+| Quality | grid density + eval resolution | **Done** — Low/Medium/High |
+| Viscosity | weight decay rate | **Done** — 0.0–0.01 |
+| Brush Size | interaction radius | **Done** — 0.003–0.3 |
+| Visualization | display mode | **Done** — Dye/Vorticity/Velocity/Debug |
+| Time step | `dt` | Pending (no advection yet) |
+| Projection iterations | `K` | Pending (no projection yet) |
+| Force strength | configurable | Pending |
+| Pause/Resume | bool | Pending |
+| Reset | button | Pending |
+
+### Step 9.6: Dye Injection (Pending)
 
 ```javascript
 // On mouse press:
@@ -1037,33 +1080,18 @@ The projection step in 3D follows the same structure as 2D but:
 //   3. Cycle through hue for each injection (visually distinct)
 ```
 
-### Step 9.3: GUI Controls
-
-Integrate lightweight UI (dat.gui or custom HTML sliders):
-
-| Control | Parameter | Range |
-|---------|-----------|-------|
-| Viscosity | `nu` | 0.0 – 0.01 |
-| Time step | `dt` | 0.005 – 0.05 |
-| Projection iterations | `K` | 1 – 32 |
-| Visualization mode | enum | vorticity / velocity / dye / debug |
-| Brush radius | float | 0.02 – 0.2 |
-| Force strength | float | 0.1 – 10.0 |
-| Colormap range | float | auto / manual |
-| Pause/Resume | bool | — |
-| Reset | button | — |
-
-### Step 9.4: Preset Scenes
+### Step 9.7: Preset Scenes — **PARTIALLY IMPLEMENTED**
 
 ```javascript
-// Taylor-Green Vortex: periodic counter-rotating vortex array
-// Leapfrog Vortices: 4 vortices that pass through each other
-// Karman Street: flow past obstacle with vortex shedding
-// Free Canvas: blank field, user injects vortices with mouse
-// Vortex Collision: two opposite-sign vortices colliding
+// Taylor-Green Vortex: periodic counter-rotating vortex array     — DONE
+// Vortex Pair: two counter-rotating Gaussian vortices              — DONE
+// Free Canvas: blank field, user injects vortices with mouse       — DONE (default)
+// Leapfrog Vortices: 4 vortices that pass through each other      — Pending
+// Karman Street: flow past obstacle with vortex shedding           — Pending
+// Vortex Collision: two opposite-sign vortices colliding           — Pending
 ```
 
-### Step 9.5: Camera Controls (3D)
+### Step 9.8: Camera Controls (3D) — Pending
 
 ```javascript
 // OrbitControls for 3D mode (already in project dependencies)
@@ -1239,7 +1267,11 @@ Claude-experiments/
 - [ ] 30fps at 64³ with 512 Gaussians
 
 ### Milestone 7: Interactive Demo (Phases 9–10)
-- [ ] Mouse force injection creates visible vortices
+- [x] Mouse force injection creates visible vortices
+- [x] Tap/click spawns alternating vortices
+- [x] Drag to stir pushes fluid in movement direction
+- [x] Brush cursor visualization
+- [x] Viscous weight decay
 - [ ] Dye injection with color cycling
 - [x] GUI controls responsive
 - [x] Preset scenes load correctly

@@ -1201,15 +1201,15 @@ Claude-experiments/
 ## 15. Milestones & Verification
 
 ### Milestone 1: GPGPU Pipeline (Phase 1)
-- [ ] WebGL 2 context with float texture support
-- [ ] Fullscreen quad pass working
-- [ ] Ping-pong FBO read/write verified
-- [ ] Float readback matches CPU computation
+- [x] WebGL 2 context with float texture support
+- [x] Fullscreen quad pass working
+- [x] Ping-pong FBO read/write verified
+- [x] Float readback matches CPU computation
 
 ### Milestone 2: Static Gaussian Field (Phases 2–3)
-- [ ] Gaussians initialized on grid, uploaded to textures
-- [ ] Velocity field evaluated on screen — Taylor-Green matches expected pattern
-- [ ] Vorticity and divergence computed analytically — values match theory
+- [x] Gaussians initialized on grid, uploaded to textures
+- [x] Velocity field evaluated on screen — Taylor-Green matches expected pattern
+- [x] Vorticity and divergence computed analytically — values match theory
 - [ ] Spatial grid acceleration working — no visual difference from brute force
 
 ### Milestone 3: Advection Working (Phase 4)
@@ -1227,7 +1227,7 @@ Claude-experiments/
 - [ ] Simulation runs stably for > 500 time steps
 
 ### Milestone 5: Beautiful Visualization (Phase 7)
-- [ ] Vorticity colormap renders correctly
+- [x] Vorticity colormap renders correctly
 - [ ] Dye advection produces smooth, swirling patterns
 - [ ] Gaussian debug view shows particle distribution
 - [ ] 60fps at 256×256 with 1024 Gaussians
@@ -1241,8 +1241,8 @@ Claude-experiments/
 ### Milestone 7: Interactive Demo (Phases 9–10)
 - [ ] Mouse force injection creates visible vortices
 - [ ] Dye injection with color cycling
-- [ ] GUI controls responsive
-- [ ] Preset scenes load correctly
+- [x] GUI controls responsive
+- [x] Preset scenes load correctly
 - [ ] Adaptive quality maintains smooth framerate
 - [ ] Error diagnostics overlay functional
 

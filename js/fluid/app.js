@@ -220,7 +220,7 @@ function buildField() {
     } else {
         field.uploadToGPU(gl);
         createEvalTextures(q.evalRes);
-        vizScale = 1.0;
+        vizScale = 0.01;
     }
 }
 
@@ -366,7 +366,7 @@ function applyMouseForce() {
     const speed = Math.sqrt(mouse.vx * mouse.vx + mouse.vy * mouse.vy);
     if (speed < 0.0005) return;
 
-    const strength = 3.0;
+    const strength = 15.0;
     const r2 = brushRadius * brushRadius;
 
     for (let i = 0; i < field.N; i++) {
@@ -376,7 +376,7 @@ function applyMouseForce() {
         const dy = py - mouse.y;
         const dist2 = dx * dx + dy * dy;
 
-        if (dist2 < r2 * 9) {
+        if (dist2 < r2 * 16) {
             const falloff = Math.exp(-dist2 / (2 * r2));
             field.weights[i * 2]     += mouse.vx * strength * falloff;
             field.weights[i * 2 + 1] += mouse.vy * strength * falloff;
@@ -394,7 +394,7 @@ function applyMouseForce() {
 function injectVortex(cx, cy) {
     if (!field) return;
 
-    const strength = 0.4 * vortexSign;
+    const strength = 3.0 * vortexSign;
     vortexSign *= -1; // alternate direction
     const r2 = brushRadius * brushRadius;
 
@@ -405,7 +405,7 @@ function injectVortex(cx, cy) {
         const dy = py - cy;
         const dist2 = dx * dx + dy * dy;
 
-        if (dist2 < r2 * 9) {
+        if (dist2 < r2 * 16) {
             const falloff = Math.exp(-dist2 / (2 * r2));
             // Rotational: perpendicular to radial direction
             field.weights[i * 2]     += -dy * strength * falloff;
@@ -418,7 +418,7 @@ function injectVortex(cx, cy) {
 }
 
 /**
- * Gradually grow vizScale to accommodate new forces without sudden jumps.
+ * Smoothly track vizScale to match actual field magnitude (both up and down).
  */
 function adjustScale() {
     let maxW = 0;
@@ -426,10 +426,12 @@ function adjustScale() {
         const a = Math.abs(field.weights[i]);
         if (a > maxW) maxW = a;
     }
-    // Smooth scale-up (never scale down instantly — let decay handle it)
-    const target = Math.max(maxW * 1.5, 0.01);
+    const target = Math.max(maxW * 2.0, 0.01);
+    // Fast scale-up, gentler scale-down
     if (target > vizScale) {
-        vizScale = vizScale * 0.7 + target * 0.3;
+        vizScale = vizScale * 0.5 + target * 0.5;
+    } else {
+        vizScale = vizScale * 0.95 + target * 0.05;
     }
 }
 
@@ -449,9 +451,9 @@ function applyDecay(dt) {
 
     if (anySignificant) {
         needsUpload = true;
-        // Gradually shrink scale as things decay
-        vizScale = Math.max(vizScale * (0.995 + 0.005 * decay), 0.01);
     }
+    // Keep vizScale tracking actual field magnitude
+    adjustScale();
 }
 
 // ---------------------------------------------------------------------------

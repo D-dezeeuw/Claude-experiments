@@ -48,12 +48,13 @@
     <div id="ui">
         <h1>Gaussian Fluids</h1>
         <div class="sub">Grid-free Navier-Stokes &middot; WebGL 2</div>
+        <div class="sub" style="color:#58a6ff;margin-bottom:8px">Click to spawn vortices &middot; Drag to stir</div>
         <label>
             <span>Preset</span>
             <select id="preset">
+                <option value="free" selected>Free Canvas</option>
                 <option value="taylor-green">Taylor-Green Vortex</option>
                 <option value="vortex-pair">Vortex Pair</option>
-                <option value="free" selected>Free Canvas</option>
             </select>
         </label>
         <label>
@@ -71,8 +72,8 @@
         <label>
             <span>Visualization</span>
             <select id="vizMode">
-                <option value="dye" selected>Dye</option>
-                <option value="vorticity">Vorticity</option>
+                <option value="dye">Dye</option>
+                <option value="vorticity" selected>Vorticity</option>
                 <option value="velocity">Velocity Magnitude</option>
                 <option value="debug">Debug (Gaussians)</option>
             </select>

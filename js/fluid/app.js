@@ -1,7 +1,7 @@
 /**
  * Gaussian Fluids — Main Application
  *
- * Phases 1-2 + Interactivity: GPGPU pipeline, Gaussian Spatial Representation,
+ * GPGPU pipeline + Gaussian Spatial Representation + Euler advection +
  * mouse/touch interaction (drag to stir, tap to spawn vortices, weight decay).
  */
 
@@ -25,8 +25,6 @@ uniform sampler2D t_posScale;
 uniform sampler2D t_rotWeight;
 uniform int u_N;
 uniform int u_texSize;
-
-// Mouse force overlay (instant GPU feedback)
 uniform vec2 u_mousePos;
 uniform vec2 u_mouseVel;
 uniform float u_mouseActive;
@@ -59,7 +57,7 @@ void main() {
         divg += w.x * gG.x + w.y * gG.y;
     }
 
-    // Add real-time mouse force (instant visual feedback while dragging)
+    // Real-time mouse force overlay
     if (u_mouseActive > 0.5) {
         vec2 d = x - u_mousePos;
         float r2 = u_brushRadius * u_brushRadius;
@@ -79,8 +77,6 @@ out vec4 outColor;
 uniform sampler2D u_field;
 uniform int u_mode;
 uniform float u_scale;
-
-// Brush cursor
 uniform vec2 u_cursorPos;
 uniform float u_cursorRadius;
 uniform float u_cursorActive;
@@ -99,23 +95,19 @@ void main() {
 
     vec3 color;
     if (u_mode == 1) {
-        // Vorticity: diverging coolwarm
         color = coolwarm(vort / u_scale);
     } else if (u_mode == 2) {
-        // Velocity magnitude: viridis
         color = viridis(length(vel) / u_scale);
     } else if (u_mode == 3) {
-        // Debug: magma intensity
         color = magma(length(vel) / u_scale);
     } else {
-        // Dye: hue from direction, brightness from magnitude
         float mag = length(vel);
         float angle = atan(vel.y, vel.x);
         float hue = angle / 6.2832 + 0.5;
         color = hsl2rgb(hue, 0.8, 0.05 + clamp(mag / u_scale, 0.0, 1.0) * 0.55);
     }
 
-    // Draw brush cursor ring
+    // Brush cursor ring
     float dist = length(v_uv - u_cursorPos);
     float ring = smoothstep(u_cursorRadius - 0.003, u_cursorRadius, dist)
                * (1.0 - smoothstep(u_cursorRadius, u_cursorRadius + 0.003, dist));
@@ -142,28 +134,22 @@ const QUALITY = [
 let gl, canvas, statsEl;
 let evalPass, displayPass;
 let fieldTex, fieldFBO;
-let field; // GaussianField
-let currentPreset = 'free';
+let field = null;
+let currentPreset = 'taylor-green';
 let currentQuality = 1;
-let vizMode = 1; // default to vorticity
-let vizScale = 1.0;
+let vizMode = 1;
+let vizScale = 0.5;
+let fieldReady = false;
 
 let frameCount = 0, lastFpsTime = 0, fps = 0;
 let lastFrameTime = 0;
 
-// Mouse / touch interaction state
-let mouse = {
-    x: 0.5, y: 0.5,   // current position (UV coords, [0,1])
-    px: 0.5, py: 0.5,  // previous position
-    vx: 0, vy: 0,      // velocity (delta per frame)
-    down: false,        // button/touch pressed
-    onCanvas: false,    // cursor is over the canvas
-};
-let brushRadius = 0.08;
+let mouse = { x: 0.5, y: 0.5, px: 0.5, py: 0.5, vx: 0, vy: 0, down: false, onCanvas: false };
+let brushRadius = 0.09;
 let viscosity = 0.001;
-let vortexSign = 1; // alternates +1/-1 for clockwise/counter-clockwise taps
-let needsUpload = false; // flag to batch GPU uploads
-let originalPositions = null; // saved grid positions for spring-back force
+let vortexSign = 1;
+let needsUpload = false;
+let originalPositions = null;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -176,15 +162,28 @@ function init() {
     resize();
     window.addEventListener('resize', resize);
 
-    const ctx = initContext(canvas);
-    gl = ctx.gl;
-    console.log('WebGL 2 ready', ctx.caps);
+    try {
+        const ctx = initContext(canvas);
+        gl = ctx.gl;
+        statsEl.textContent = 'WebGL 2 OK. Compiling shaders...';
+    } catch (e) {
+        statsEl.textContent = 'Error: ' + e.message;
+        console.error(e);
+        return;
+    }
 
-    evalPass = new GPUPass(gl, EVAL_FIELD_FRAG);
-    displayPass = new GPUPass(gl, DISPLAY_FRAG);
+    try {
+        evalPass = new GPUPass(gl, EVAL_FIELD_FRAG);
+        displayPass = new GPUPass(gl, DISPLAY_FRAG);
+        statsEl.textContent = 'Shaders OK. Building field...';
+    } catch (e) {
+        statsEl.textContent = 'Shader error: ' + e.message;
+        console.error(e);
+        return;
+    }
 
-    setupUI();
     setupMouse();
+    setupUI();
     buildField();
 
     lastFpsTime = performance.now();
@@ -203,6 +202,7 @@ function resize() {
 // ---------------------------------------------------------------------------
 
 function buildField() {
+    fieldReady = false;
     const q = QUALITY[currentQuality];
     const presetFn = PRESETS[currentPreset];
 
@@ -210,19 +210,48 @@ function buildField() {
     field.initGrid();
     originalPositions = new Float32Array(field.positions);
 
-    if (presetFn !== PRESETS['free']) {
-        statsEl.textContent = `Fitting ${q.nx * q.ny} Gaussians...`;
-        setTimeout(() => {
-            field.fitToField(presetFn, 40);
+    statsEl.textContent = `Building ${q.nx * q.ny} Gaussians...`;
+
+    // Use setTimeout so the status text renders before blocking fit
+    setTimeout(() => {
+        try {
+            if (presetFn !== PRESETS['free']) {
+                field.fitToField(presetFn, 40);
+            } else {
+                // Seed free canvas with a few random vortices so it's not blank
+                seedRandomVortices(field, 4);
+            }
             field.uploadToGPU(gl);
             createEvalTextures(q.evalRes);
             autoScale(q.evalRes);
-            console.log(`Built: ${field.N} Gaussians, ${q.evalRes}x${q.evalRes} eval`);
-        }, 10);
-    } else {
-        field.uploadToGPU(gl);
-        createEvalTextures(q.evalRes);
-        vizScale = 0.01;
+            fieldReady = true;
+            statsEl.textContent = `Ready — ${field.N} Gaussians`;
+        } catch (e) {
+            statsEl.textContent = 'Build error: ' + e.message;
+            console.error(e);
+        }
+    }, 20);
+}
+
+function seedRandomVortices(f, count) {
+    for (let v = 0; v < count; v++) {
+        const cx = 0.2 + Math.random() * 0.6;
+        const cy = 0.2 + Math.random() * 0.6;
+        const sign = (v % 2 === 0) ? 1 : -1;
+        const str = 1.5 + Math.random() * 1.5;
+        const radius = 0.06 + Math.random() * 0.06;
+        const r2 = radius * radius;
+
+        for (let i = 0; i < f.N; i++) {
+            const dx = f.positions[i * 2] - cx;
+            const dy = f.positions[i * 2 + 1] - cy;
+            const dist2 = dx * dx + dy * dy;
+            if (dist2 < r2 * 16) {
+                const falloff = Math.exp(-dist2 / (2 * r2));
+                f.weights[i * 2]     += -dy * str * sign * falloff;
+                f.weights[i * 2 + 1] +=  dx * str * sign * falloff;
+            }
+        }
     }
 }
 
@@ -274,11 +303,114 @@ function evalFieldToTexture(res) {
 }
 
 // ---------------------------------------------------------------------------
+// Advection — Euler integration of Gaussian centers through velocity field
+// ---------------------------------------------------------------------------
+
+function advectStep(dt) {
+    if (!field || !originalPositions) return;
+
+    const N = field.N;
+
+    // Precompute inverse covariances for active Gaussians
+    const invCov = new Float32Array(N * 3);
+    const active = new Uint8Array(N);
+    let activeCount = 0;
+
+    for (let j = 0; j < N; j++) {
+        if (Math.abs(field.weights[j * 2]) < 1e-7 && Math.abs(field.weights[j * 2 + 1]) < 1e-7) continue;
+
+        active[j] = 1;
+        activeCount++;
+
+        const theta = field.rotations[j];
+        const sx_inv = 1 / Math.exp(field.logScales[j * 2]);
+        const sy_inv = 1 / Math.exp(field.logScales[j * 2 + 1]);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const r00 = c * sx_inv, r01 = s * sx_inv;
+        const r10 = -s * sy_inv, r11 = c * sy_inv;
+        invCov[j * 3]     = r00 * r00 + r10 * r10;
+        invCov[j * 3 + 1] = r00 * r01 + r10 * r11;
+        invCov[j * 3 + 2] = r01 * r01 + r11 * r11;
+    }
+
+    if (activeCount === 0) return;
+
+    // Evaluate velocity at each center and move
+    for (let i = 0; i < N; i++) {
+        const px = field.positions[i * 2];
+        const py = field.positions[i * 2 + 1];
+        let ux = 0, uy = 0;
+
+        for (let j = 0; j < N; j++) {
+            if (!active[j]) continue;
+            const dx = px - field.positions[j * 2];
+            const dy = py - field.positions[j * 2 + 1];
+            const a = invCov[j * 3], b = invCov[j * 3 + 1], d = invCov[j * 3 + 2];
+            const exponent = -0.5 * (a * dx * dx + 2 * b * dx * dy + d * dy * dy);
+            if (exponent < -6) continue;
+            const g = Math.exp(exponent);
+            ux += field.weights[j * 2] * g;
+            uy += field.weights[j * 2 + 1] * g;
+        }
+
+        field.positions[i * 2]     += dt * ux;
+        field.positions[i * 2 + 1] += dt * uy;
+    }
+
+    // Weak spring toward original grid
+    const spring = 1.5;
+    for (let i = 0; i < N; i++) {
+        field.positions[i * 2]     += spring * dt * (originalPositions[i * 2]     - field.positions[i * 2]);
+        field.positions[i * 2 + 1] += spring * dt * (originalPositions[i * 2 + 1] - field.positions[i * 2 + 1]);
+    }
+
+    // Clamp to domain
+    for (let i = 0; i < N * 2; i++) {
+        field.positions[i] = Math.max(0.001, Math.min(0.999, field.positions[i]));
+    }
+
+    needsUpload = true;
+}
+
+// ---------------------------------------------------------------------------
+// Decay + scale tracking
+// ---------------------------------------------------------------------------
+
+function applyDecay(dt) {
+    if (!field) return;
+
+    const decay = Math.exp(-viscosity * dt * 60);
+    let anySignificant = false;
+
+    for (let i = 0; i < field.N * 2; i++) {
+        field.weights[i] *= decay;
+        if (Math.abs(field.weights[i]) > 1e-6) anySignificant = true;
+    }
+
+    if (anySignificant) needsUpload = true;
+    adjustScale();
+}
+
+function adjustScale() {
+    if (!field) return;
+    let maxW = 0;
+    for (let i = 0; i < field.N * 2; i++) {
+        const a = Math.abs(field.weights[i]);
+        if (a > maxW) maxW = a;
+    }
+    const target = Math.max(maxW * 2.0, 0.01);
+    if (target > vizScale) {
+        vizScale = vizScale * 0.5 + target * 0.5;
+    } else {
+        vizScale = vizScale * 0.95 + target * 0.05;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Mouse / Touch interaction
 // ---------------------------------------------------------------------------
 
 function setupMouse() {
-    // Convert client coordinates to UV [0,1] with Y flipped
     function clientToUV(clientX, clientY) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -287,11 +419,11 @@ function setupMouse() {
         };
     }
 
-    // --- Mouse events ---
     canvas.addEventListener('mouseenter', () => { mouse.onCanvas = true; });
-    canvas.addEventListener('mouseleave', () => { mouse.onCanvas = false; });
+    canvas.addEventListener('mouseleave', () => { mouse.onCanvas = false; mouse.down = false; });
 
     canvas.addEventListener('mousemove', (e) => {
+        mouse.onCanvas = true;
         const uv = clientToUV(e.clientX, e.clientY);
         mouse.px = mouse.x;
         mouse.py = mouse.y;
@@ -299,14 +431,11 @@ function setupMouse() {
         mouse.y = uv.y;
         mouse.vx = mouse.x - mouse.px;
         mouse.vy = mouse.y - mouse.py;
-
-        if (mouse.down) {
-            applyMouseForce();
-        }
+        if (mouse.down) applyMouseForce();
     });
 
     canvas.addEventListener('mousedown', (e) => {
-        if (e.target !== canvas) return;
+        e.preventDefault();
         const uv = clientToUV(e.clientX, e.clientY);
         mouse.x = uv.x;
         mouse.y = uv.y;
@@ -318,9 +447,9 @@ function setupMouse() {
         injectVortex(mouse.x, mouse.y);
     });
 
-    canvas.addEventListener('mouseup', () => { mouse.down = false; });
+    window.addEventListener('mouseup', () => { mouse.down = false; });
 
-    // --- Touch events ---
+    // Touch
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const t = e.touches[0];
@@ -355,16 +484,11 @@ function setupMouse() {
         mouse.onCanvas = false;
     });
 
-    // Prevent context menu on long press
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-/**
- * Drag interaction: push nearby Gaussian weights in the direction of mouse movement.
- */
 function applyMouseForce() {
-    if (!field) return;
-
+    if (!field || !fieldReady) return;
     const speed = Math.sqrt(mouse.vx * mouse.vx + mouse.vy * mouse.vy);
     if (speed < 0.0005) return;
 
@@ -372,165 +496,37 @@ function applyMouseForce() {
     const r2 = brushRadius * brushRadius;
 
     for (let i = 0; i < field.N; i++) {
-        const px = field.positions[i * 2];
-        const py = field.positions[i * 2 + 1];
-        const dx = px - mouse.x;
-        const dy = py - mouse.y;
+        const dx = field.positions[i * 2] - mouse.x;
+        const dy = field.positions[i * 2 + 1] - mouse.y;
         const dist2 = dx * dx + dy * dy;
-
         if (dist2 < r2 * 16) {
             const falloff = Math.exp(-dist2 / (2 * r2));
             field.weights[i * 2]     += mouse.vx * strength * falloff;
             field.weights[i * 2 + 1] += mouse.vy * strength * falloff;
         }
     }
-
     needsUpload = true;
     adjustScale();
 }
 
-/**
- * Tap/click interaction: spawn a vortex (rotational flow) at the given position.
- * Alternates clockwise / counter-clockwise.
- */
 function injectVortex(cx, cy) {
-    if (!field) return;
+    if (!field || !fieldReady) return;
 
     const strength = 3.0 * vortexSign;
-    vortexSign *= -1; // alternate direction
+    vortexSign *= -1;
     const r2 = brushRadius * brushRadius;
 
     for (let i = 0; i < field.N; i++) {
-        const px = field.positions[i * 2];
-        const py = field.positions[i * 2 + 1];
-        const dx = px - cx;
-        const dy = py - cy;
+        const dx = field.positions[i * 2] - cx;
+        const dy = field.positions[i * 2 + 1] - cy;
         const dist2 = dx * dx + dy * dy;
-
         if (dist2 < r2 * 16) {
             const falloff = Math.exp(-dist2 / (2 * r2));
-            // Rotational: perpendicular to radial direction
             field.weights[i * 2]     += -dy * strength * falloff;
             field.weights[i * 2 + 1] +=  dx * strength * falloff;
         }
     }
-
     needsUpload = true;
-    adjustScale();
-}
-
-/**
- * Smoothly track vizScale to match actual field magnitude (both up and down).
- */
-function adjustScale() {
-    let maxW = 0;
-    for (let i = 0; i < field.N * 2; i++) {
-        const a = Math.abs(field.weights[i]);
-        if (a > maxW) maxW = a;
-    }
-    const target = Math.max(maxW * 2.0, 0.01);
-    // Fast scale-up, gentler scale-down
-    if (target > vizScale) {
-        vizScale = vizScale * 0.5 + target * 0.5;
-    } else {
-        vizScale = vizScale * 0.95 + target * 0.05;
-    }
-}
-
-/**
- * Advect Gaussian centers through the velocity field (Euler integration).
- * Each Gaussian moves according to the summed velocity from all active Gaussians.
- * A weak spring force pulls positions back toward the original grid to maintain coverage.
- */
-function advectStep(dt) {
-    if (!field || !originalPositions) return;
-
-    const N = field.N;
-
-    // Precompute inverse covariances for active (non-zero weight) Gaussians
-    const invCov = new Float32Array(N * 3); // [a, b, d] packed per Gaussian
-    const active = new Uint8Array(N);
-    let activeCount = 0;
-
-    for (let j = 0; j < N; j++) {
-        const wx = field.weights[j * 2];
-        const wy = field.weights[j * 2 + 1];
-        if (Math.abs(wx) < 1e-7 && Math.abs(wy) < 1e-7) continue;
-
-        active[j] = 1;
-        activeCount++;
-
-        const theta = field.rotations[j];
-        const sx_inv = 1 / Math.exp(field.logScales[j * 2]);
-        const sy_inv = 1 / Math.exp(field.logScales[j * 2 + 1]);
-        const c = Math.cos(theta), s = Math.sin(theta);
-        const r00 = c * sx_inv, r01 = s * sx_inv;
-        const r10 = -s * sy_inv, r11 = c * sy_inv;
-        invCov[j * 3]     = r00 * r00 + r10 * r10;
-        invCov[j * 3 + 1] = r00 * r01 + r10 * r11;
-        invCov[j * 3 + 2] = r01 * r01 + r11 * r11;
-    }
-
-    if (activeCount === 0) return;
-
-    // Evaluate velocity at each Gaussian center and advect
-    for (let i = 0; i < N; i++) {
-        const px = field.positions[i * 2];
-        const py = field.positions[i * 2 + 1];
-        let ux = 0, uy = 0;
-
-        for (let j = 0; j < N; j++) {
-            if (!active[j]) continue;
-
-            const dx = px - field.positions[j * 2];
-            const dy = py - field.positions[j * 2 + 1];
-            const a = invCov[j * 3], b = invCov[j * 3 + 1], d = invCov[j * 3 + 2];
-            const exponent = -0.5 * (a * dx * dx + 2 * b * dx * dy + d * dy * dy);
-            if (exponent < -6) continue; // negligible contribution
-
-            const g = Math.exp(exponent);
-            ux += field.weights[j * 2] * g;
-            uy += field.weights[j * 2 + 1] * g;
-        }
-
-        // Euler step
-        field.positions[i * 2]     += dt * ux;
-        field.positions[i * 2 + 1] += dt * uy;
-    }
-
-    // Weak spring force toward original grid (prevents drift, maintains coverage)
-    const spring = 1.5;
-    for (let i = 0; i < N; i++) {
-        field.positions[i * 2]     += spring * dt * (originalPositions[i * 2]     - field.positions[i * 2]);
-        field.positions[i * 2 + 1] += spring * dt * (originalPositions[i * 2 + 1] - field.positions[i * 2 + 1]);
-    }
-
-    // Clamp to domain
-    for (let i = 0; i < N * 2; i++) {
-        field.positions[i] = Math.max(0.001, Math.min(0.999, field.positions[i]));
-    }
-
-    needsUpload = true;
-}
-
-/**
- * Apply viscous decay: exponential damping of all weights each frame.
- */
-function applyDecay(dt) {
-    if (!field) return;
-
-    const decay = Math.exp(-viscosity * dt * 60);
-    let anySignificant = false;
-
-    for (let i = 0; i < field.N * 2; i++) {
-        field.weights[i] *= decay;
-        if (Math.abs(field.weights[i]) > 1e-6) anySignificant = true;
-    }
-
-    if (anySignificant) {
-        needsUpload = true;
-    }
-    // Keep vizScale tracking actual field magnitude
     adjustScale();
 }
 
@@ -551,10 +547,7 @@ function setupUI() {
     presetEl.value = currentPreset;
     vizEl.value = 'vorticity';
 
-    presetEl.addEventListener('change', () => {
-        currentPreset = presetEl.value;
-        buildField();
-    });
+    presetEl.addEventListener('change', () => { currentPreset = presetEl.value; buildField(); });
 
     qualEl.value = currentQuality;
     qualVal.textContent = QUALITY[currentQuality].label;
@@ -577,9 +570,7 @@ function setupUI() {
     });
 
     const modeMap = { 'dye': 0, 'vorticity': 1, 'velocity': 2, 'debug': 3 };
-    vizEl.addEventListener('change', () => {
-        vizMode = modeMap[vizEl.value] ?? 0;
-    });
+    vizEl.addEventListener('change', () => { vizMode = modeMap[vizEl.value] ?? 0; });
 }
 
 // ---------------------------------------------------------------------------
@@ -590,7 +581,7 @@ function loop(now) {
     requestAnimationFrame(loop);
     frameCount++;
 
-    const dt = Math.min((now - lastFrameTime) / 1000, 0.05); // cap at 50ms
+    const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
     if (now - lastFpsTime >= 500) {
@@ -599,41 +590,39 @@ function loop(now) {
         lastFpsTime = now;
     }
 
-    if (!field || !field.texPosScale) return; // still loading
+    if (!field || !fieldReady) return;
 
-    // Apply viscous decay (modifies weights)
-    applyDecay(dt);
+    try {
+        applyDecay(dt);
+        advectStep(dt);
 
-    // Advect Gaussian centers through the velocity field (modifies positions)
-    advectStep(dt);
+        if (needsUpload) {
+            field.uploadToGPU(gl);
+            needsUpload = false;
+        }
 
-    // Upload modified weights + positions if needed
-    if (needsUpload) {
-        field.uploadToGPU(gl);
-        needsUpload = false;
+        const q = QUALITY[currentQuality];
+        evalFieldToTexture(q.evalRes);
+
+        displayPass.execute({
+            target: null,
+            width: canvas.width,
+            height: canvas.height,
+            textures: { u_field: fieldTex },
+            uniforms: {
+                u_scale: vizScale,
+                u_cursorPos: [mouse.x, mouse.y],
+                u_cursorRadius: brushRadius,
+                u_cursorActive: mouse.onCanvas ? 1.0 : 0.0,
+            },
+            intUniforms: { u_mode: vizMode },
+        });
+
+        statsEl.textContent = `${fps} fps | ${field.N} gaussians | scale ${vizScale.toFixed(3)}`;
+    } catch (e) {
+        statsEl.textContent = 'Render error: ' + e.message;
+        console.error(e);
     }
-
-    const q = QUALITY[currentQuality];
-
-    // Evaluate Gaussian field to texture
-    evalFieldToTexture(q.evalRes);
-
-    // Display with colormap + cursor
-    displayPass.execute({
-        target: null,
-        width: canvas.width,
-        height: canvas.height,
-        textures: { u_field: fieldTex },
-        uniforms: {
-            u_scale: vizScale,
-            u_cursorPos: [mouse.x, mouse.y],
-            u_cursorRadius: brushRadius,
-            u_cursorActive: mouse.onCanvas ? 1.0 : 0.0,
-        },
-        intUniforms: { u_mode: vizMode },
-    });
-
-    statsEl.textContent = `${fps} fps | ${field.N} gaussians | ${q.evalRes}\u00B2 eval | brush ${brushRadius.toFixed(2)}`;
 }
 
 // ---------------------------------------------------------------------------

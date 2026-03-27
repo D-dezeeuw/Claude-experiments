@@ -1,71 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Experiments</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-            background: #0d1117; color: #e6edf3; min-height: 100vh;
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
         }
-        .header {
-            max-width: 960px; margin: 0 auto; padding: 48px 24px 24px;
-        }
-        .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
-        .header p { color: #8b949e; font-size: 15px; }
-        .grid {
-            max-width: 960px; margin: 0 auto; padding: 0 24px 60px;
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
-        }
-        .card {
-            background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-            padding: 24px; text-decoration: none; color: inherit;
-            transition: border-color 0.2s, transform 0.2s;
-            display: flex; flex-direction: column;
-        }
-        .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
-        .card .tag {
-            display: inline-block; padding: 2px 8px; border-radius: 12px;
-            font-size: 11px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.5px; margin-bottom: 12px; width: fit-content;
-        }
-        .tag-live { background: rgba(63,185,80,0.15); color: #3fb950; }
-        .tag-wip { background: rgba(210,153,34,0.15); color: #d29922; }
-        .tag-plan { background: rgba(188,140,255,0.15); color: #bc8cff; }
-        .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .card p { color: #8b949e; font-size: 14px; line-height: 1.5; flex: 1; }
-        .card .tech {
-            margin-top: 14px; padding-top: 12px; border-top: 1px solid #30363d;
-            font-size: 12px; color: #6e7681;
-        }
-    </style>
+    </script>
+    <script src="shared/theme.js"></script>
 </head>
-<body>
-    <div class="header">
-        <h1>Claude Experiments</h1>
-        <p>WebGL shader toys and interactive demos</p>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen transition-colors">
+
+    <div class="max-w-5xl mx-auto px-6 py-12">
+        <header class="mb-10">
+            <h1 class="text-3xl font-bold tracking-tight">Claude Experiments</h1>
+            <p class="mt-1 text-gray-500 dark:text-gray-400">Interactive demos, tools, and prototypes</p>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+
+            <!-- TraderAI -->
+            <a href="trader-ai/index.html"
+               class="group block rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 hover:border-blue-500 dark:hover:border-blue-400 hover:-translate-y-0.5 transition-all">
+                <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 mb-3">New</span>
+                <h2 class="text-lg font-semibold mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">TraderAI</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">AI-powered trading experiment with market analysis and strategy simulation.</p>
+                <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">HTML &middot; JavaScript &middot; Canvas</div>
+            </a>
+
+            <!-- Gran Canaria 3D Terrain -->
+            <a href="terrain.html"
+               class="group block rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 hover:border-blue-500 dark:hover:border-blue-400 hover:-translate-y-0.5 transition-all">
+                <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 mb-3">Live</span>
+                <h2 class="text-lg font-semibold mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Gran Canaria 3D Terrain</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Interactive 3D terrain map with procedural height generation, elevation-based coloring, and orbit camera controls.</p>
+                <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">Three.js &middot; MeshStandardMaterial &middot; Procedural geometry</div>
+            </a>
+
+            <!-- Gaussian Fluids -->
+            <a href="fluid.html"
+               class="group block rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 hover:border-blue-500 dark:hover:border-blue-400 hover:-translate-y-0.5 transition-all">
+                <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 mb-3">In Progress</span>
+                <h2 class="text-lg font-semibold mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Gaussian Fluids</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Interactive fluid simulation using Gaussian Spatial Representation. Grid-free Navier-Stokes solver.</p>
+                <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">WebGL 2 &middot; GLSL ES 3.0 &middot; GPGPU</div>
+            </a>
+
+            <!-- Fluid Shader Plan -->
+            <a href="plan-fluid-shader.html"
+               class="group block rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 hover:border-blue-500 dark:hover:border-blue-400 hover:-translate-y-0.5 transition-all">
+                <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 mb-3">Plan</span>
+                <h2 class="text-lg font-semibold mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Fluid Shader &mdash; Plan</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">10-phase implementation plan based on "Gaussian Fluids" (Xing et al., SIGGRAPH 2025).</p>
+                <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">Documentation &middot; SIGGRAPH 2025</div>
+            </a>
+
+        </div>
     </div>
-    <div class="grid">
-        <a class="card" href="terrain.html">
-            <span class="tag tag-live">Live</span>
-            <h2>Gran Canaria 3D Terrain</h2>
-            <p>Interactive 3D terrain map with procedural height generation, elevation-based coloring, and orbit camera controls.</p>
-            <div class="tech">Three.js &middot; MeshStandardMaterial &middot; Procedural geometry</div>
-        </a>
-        <a class="card" href="fluid.html">
-            <span class="tag tag-wip">In Progress</span>
-            <h2>Gaussian Fluids</h2>
-            <p>Interactive fluid simulation using Gaussian Spatial Representation. Grid-free Navier-Stokes solver with analytical derivatives and vorticity-preserving projection.</p>
-            <div class="tech">WebGL 2 &middot; GLSL ES 3.0 &middot; GPGPU &middot; Float textures</div>
-        </a>
-        <a class="card" href="plan-fluid-shader.html">
-            <span class="tag tag-plan">Plan</span>
-            <h2>Fluid Shader &mdash; Implementation Plan</h2>
-            <p>10-phase implementation plan based on "Gaussian Fluids" (Xing et al., SIGGRAPH 2025). Full math reference, architecture diagrams, and milestones.</p>
-            <div class="tech">Documentation &middot; SIGGRAPH 2025</div>
-        </a>
-    </div>
+
 </body>
 </html>

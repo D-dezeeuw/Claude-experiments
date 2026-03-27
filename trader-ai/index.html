@@ -10,7 +10,19 @@
             darkMode: 'class',
         }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/theme.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/stages/01-market-pulse.js"></script>
+    <script src="js/stages/02-stock-screener.js"></script>
+    <script src="js/stages/03-fundamentals.js"></script>
+    <script src="js/stages/04-technical.js"></script>
+    <script src="js/stages/05-news-sentiment.js"></script>
+    <script src="js/stages/06-risk.js"></script>
+    <script src="js/stages/07-scorecard.js"></script>
+    <script src="js/stages/08-action-plan.js"></script>
+    <script src="js/app.js"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen transition-colors">
 
@@ -22,15 +34,71 @@
     </nav>
 
     <div class="max-w-5xl mx-auto px-6 py-10">
-        <header class="mb-10">
-            <h1 class="text-3xl font-bold tracking-tight">TraderAI</h1>
-            <p class="mt-1 text-gray-500 dark:text-gray-400">AI-powered trading experiment</p>
+        <header class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">TraderAI</h1>
+                <p class="mt-1 text-gray-500 dark:text-gray-400">Daily stock assessment pipeline</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="api-status" class="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400">Offline mode</span>
+                <button onclick="App.runAll()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors cursor-pointer">
+                    Run All Stages
+                </button>
+            </div>
         </header>
 
-        <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8">
-            <p class="text-gray-500 dark:text-gray-400 text-center">Project starting point. Build out from here.</p>
+        <!-- Pipeline visualization -->
+        <div class="mb-8 flex items-center gap-1 overflow-x-auto pb-2">
+            <template id="stage-pip-tpl">
+                <div class="flex items-center gap-1">
+                    <div class="w-8 h-1 rounded-full bg-gray-300 dark:bg-gray-700 transition-colors"></div>
+                </div>
+            </template>
+            <script>
+                // Render pipeline progress bar
+                document.addEventListener('DOMContentLoaded', () => {
+                    const bar = document.querySelector('.mb-8.flex');
+                    const labels = ['Pulse','Screen','Fund.','Tech.','News','Risk','Score','Action'];
+                    labels.forEach((label, i) => {
+                        const pip = document.createElement('div');
+                        pip.className = 'flex flex-col items-center gap-1 flex-1 min-w-0';
+                        pip.innerHTML = `
+                            <div id="pip-${i}" class="w-full h-1.5 rounded-full bg-gray-300 dark:bg-gray-700 transition-colors"></div>
+                            <span class="text-[10px] text-gray-400 truncate">${label}</span>
+                        `;
+                        bar.appendChild(pip);
+                        if (i < labels.length - 1) {
+                            const connector = document.createElement('div');
+                            connector.className = 'w-2 h-px bg-gray-300 dark:bg-gray-700 mt-[-10px]';
+                            bar.appendChild(connector);
+                        }
+                    });
+                });
+            </script>
+        </div>
+
+        <!-- Stage cards container -->
+        <div id="stages" class="space-y-4"></div>
+
+        <!-- Disclaimer -->
+        <div class="mt-8 text-xs text-gray-400 dark:text-gray-500 text-center">
+            Educational experiment only. Not financial advice. Always consult a qualified financial advisor.
         </div>
     </div>
+
+    <script>
+        // Update API status indicator
+        document.addEventListener('DOMContentLoaded', () => {
+            const el = document.getElementById('api-status');
+            if (CONFIG.FINNHUB_API_KEY && CONFIG.SUPABASE_URL) {
+                el.textContent = 'Live';
+                el.className = 'text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400';
+            } else if (CONFIG.FINNHUB_API_KEY || CONFIG.SUPABASE_URL) {
+                el.textContent = 'Partial';
+                el.className = 'text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400';
+            }
+        });
+    </script>
 
 </body>
 </html>

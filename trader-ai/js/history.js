@@ -137,6 +137,8 @@ const History = {
 
     if (data) {
       this.save(symbol, data);
+      // Auto-backup this symbol to Supabase
+      this.backupSymbolToSupabase(symbol, data);
     }
 
     return data;
@@ -301,6 +303,32 @@ const History = {
    * Save all cached history to Supabase (price_history table).
    * Stores one row per symbol with full candle array as JSONB.
    */
+  /** Backup a single symbol to Supabase (called automatically on fetch) */
+  async backupSymbolToSupabase(symbol, data) {
+    if (!sbClient || !data || !data.candles) return;
+    try {
+      const { error } = await sbClient
+        .from('price_history')
+        .upsert({
+          symbol,
+          source: data.source || 'unknown',
+          candle_count: data.count,
+          first_date: data.candles[0]?.date || null,
+          last_date: data.candles[data.candles.length - 1]?.date || null,
+          candles: data.candles,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'symbol' });
+      if (error) {
+        console.error('Supabase auto-backup failed for ' + symbol + ':', error);
+      } else {
+        console.info('Auto-backed up ' + symbol + ' to Supabase (' + data.count + ' candles)');
+      }
+    } catch (e) {
+      // Silent fail — localStorage is the primary store
+    }
+  },
+
+  /** Backup all cached symbols to Supabase */
   async backupToSupabase() {
     if (!sbClient) return { saved: 0, error: 'Supabase not connected' };
     const symbols = this.cachedSymbols();

@@ -21,58 +21,84 @@ const TICKERS = {
   XLRE: 'Real Estate Select Sector',
   XLC:  'Communication Services Select',
 
-  // Technology
-  AAPL:  'Apple',
-  MSFT:  'Microsoft',
-  GOOGL: 'Alphabet (Google)',
-  NVDA:  'NVIDIA',
-  META:  'Meta Platforms (Facebook)',
-  INTC:  'Intel',
-  AMD:   'Advanced Micro Devices',
-  CRM:   'Salesforce',
-
-  // Consumer Discretionary
-  AMZN:  'Amazon',
-  TSLA:  'Tesla',
-  HD:    'Home Depot',
-  LOW:   'Lowe\'s',
-
-  // Financials
-  'BRK.B': 'Berkshire Hathaway',
-  JPM:   'JPMorgan Chase',
-  V:     'Visa',
-  MA:    'Mastercard',
-  GS:    'Goldman Sachs',
-
-  // Healthcare
-  JNJ:   'Johnson & Johnson',
-  UNH:   'UnitedHealth Group',
-  LLY:   'Eli Lilly',
-  PFE:   'Pfizer',
-  ABBV:  'AbbVie',
-  MRK:   'Merck',
+  // Fear Gauges
+  VIXY: 'VIX Short-Term Futures',
+  GLD:  'SPDR Gold Shares',
+  TLT:  'iShares 20+ Year Treasury',
+  UUP:  'Invesco DB US Dollar',
+  USO:  'United States Oil Fund',
+  ITA:  'iShares U.S. Aerospace & Defense',
 
   // Energy
   XOM:   'ExxonMobil',
   CVX:   'Chevron',
 
-  // Consumer Staples
-  PG:    'Procter & Gamble',
-  KO:    'Coca-Cola',
-  PEP:   'PepsiCo',
-  COST:  'Costco',
-  WMT:   'Walmart',
-
-  // Communication
-  DIS:   'Walt Disney',
-  NFLX:  'Netflix',
+  // Materials
+  DOW:   'Dow Inc.',
+  DD:    'DuPont',
+  FCX:   'Freeport-McMoRan',
+  NEM:   'Newmont',
 
   // Industrials
   BA:    'Boeing',
   CAT:   'Caterpillar',
+  HON:   'Honeywell',
+  LMT:   'Lockheed Martin',
+  MMM:   '3M',
+
+  // Consumer Discretionary
+  AMZN:  'Amazon',
+  TSLA:  'Tesla',
+  HD:    'Home Depot',
+  F:     'Ford',
+  GM:    'General Motors',
+
+  // Consumer Staples
+  PG:    'Procter & Gamble',
+  PEP:   'PepsiCo',
+  KHC:   'Kraft Heinz',
+  GIS:   'General Mills',
+  CL:    'Colgate-Palmolive',
+
+  // Healthcare
+  JNJ:   'Johnson & Johnson',
+  PFE:   'Pfizer',
+  MRK:   'Merck',
+  ABBV:  'AbbVie',
+  AMGN:  'Amgen',
+  LLY:   'Eli Lilly',
+  GILD:  'Gilead Sciences',
+
+  // Financials
+  JPM:   'JPMorgan Chase',
+  GS:    'Goldman Sachs',
+  WFC:   'Wells Fargo',
+  V:     'Visa',
+  MA:    'Mastercard',
+
+  // Information Technology
+  MSFT:  'Microsoft',
+  NVDA:  'NVIDIA',
+  GOOGL: 'Alphabet (Google)',
+  META:  'Meta Platforms',
+  ORCL:  'Oracle',
+  INTC:  'Intel',
+
+  // Communication Services
+  T:     'AT&T',
+  VZ:    'Verizon',
+  DIS:   'Walt Disney',
+  NFLX:  'Netflix',
 
   // Utilities
   NEE:   'NextEra Energy',
+  DUK:   'Duke Energy',
+  SO:    'Southern Company',
+
+  // Real Estate
+  PLD:   'Prologis',
+  AMT:   'American Tower',
+  VNO:   'Vornado Realty Trust',
 };
 
 /**

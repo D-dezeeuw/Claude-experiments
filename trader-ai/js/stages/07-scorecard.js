@@ -88,15 +88,17 @@ const DailyScorecard = {
       // Adjust for sector-specific scenario impacts
       if (geo.activeScenarios) {
         const sectorMap = {
-          'Technology': ['tech', 'cybersecurity', 'remote_tech'],
-          'Consumer Disc.': ['consumer'],
-          'Consumer Staples': ['consumer_staples'],
-          'Financials': ['financials', 'insurance'],
-          'Healthcare': ['healthcare'],
           'Energy': ['energy'],
+          'Materials': ['manufacturing', 'commodities', 'construction'],
           'Industrials': ['industrials', 'construction', 'defense', 'airlines'],
+          'Consumer Discretionary': ['consumer'],
+          'Consumer Staples': ['consumer_staples'],
+          'Healthcare': ['healthcare'],
+          'Financials': ['financials', 'insurance'],
+          'Information Technology': ['tech', 'cybersecurity', 'remote_tech'],
+          'Communication Services': ['tech', 'consumer'],
           'Utilities': ['utilities'],
-          'Communication': ['tech', 'consumer'],
+          'Real Estate': ['real_estate', 'construction'],
         };
         const stockTags = sectorMap[stock.sector] || [];
         for (const scenario of geo.activeScenarios) {

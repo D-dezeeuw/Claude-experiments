@@ -9,26 +9,26 @@ import {
 
 const WEBZIO_TOKEN = Deno.env.get('WEBZIO_TOKEN') || '';
 
-// GICS sector → Webz.io query keywords
+// GICS sector → Webz.io query keywords (no category: filter — not supported on Lite tier)
 const SECTOR_QUERIES: Record<string, string> = {
-  'Energy': '(oil OR gas OR energy OR renewable OR crude OR OPEC) category:business',
-  'Materials': '(mining OR chemicals OR metals OR steel OR commodities OR lithium) category:business',
-  'Industrials': '(manufacturing OR aerospace OR defense OR industrial OR logistics OR Boeing OR Caterpillar) category:business',
-  'Consumer Discretionary': '(retail OR automotive OR ecommerce OR EV OR luxury OR Amazon OR Tesla) category:business',
-  'Consumer Staples': '(food OR beverage OR household OR consumer goods OR grocery) category:business',
-  'Healthcare': '(pharmaceutical OR biotech OR FDA OR drug OR healthcare OR hospital) category:business',
-  'Financials': '(banking OR "interest rate" OR "wall street" OR fintech OR insurance OR lending) category:business',
-  'Information Technology': '(software OR semiconductor OR AI OR "artificial intelligence" OR cloud OR cybersecurity) category:business',
-  'Communication Services': '(telecom OR streaming OR media OR advertising OR 5G OR broadband) category:business',
-  'Utilities': '(utility OR electric OR solar OR wind OR grid OR "clean energy") category:business',
-  'Real Estate': '("real estate" OR REIT OR property OR housing OR "office space" OR mortgage) category:business',
+  'Energy': 'oil OR gas OR energy OR OPEC OR crude OR renewable energy',
+  'Materials': 'mining OR chemicals OR metals OR steel OR commodities',
+  'Industrials': 'aerospace OR defense OR manufacturing OR industrial OR logistics',
+  'Consumer Discretionary': 'retail OR automotive OR ecommerce OR EV OR luxury',
+  'Consumer Staples': 'food OR beverage OR "consumer staples" OR grocery',
+  'Healthcare': 'pharmaceutical OR biotech OR FDA OR drug approval OR healthcare',
+  'Financials': 'banking OR "interest rate" OR "wall street" OR fintech OR insurance',
+  'Information Technology': 'semiconductor OR "artificial intelligence" OR software OR cloud OR cybersecurity',
+  'Communication Services': 'telecom OR streaming OR media OR 5G OR broadband',
+  'Utilities': '"electric utility" OR solar OR "wind energy" OR grid OR "clean energy"',
+  'Real Estate': '"real estate" OR REIT OR property OR housing OR mortgage',
 };
 
 async function fetchSectorNews(sector: string, query: string) {
   if (!WEBZIO_TOKEN) return { sector, articles: [], error: 'WEBZIO_TOKEN not set' };
 
   try {
-    const url = `https://api.webz.io/newsApiLite?token=${WEBZIO_TOKEN}&q=${encodeURIComponent(query + ' language:english')}`;
+    const url = `https://api.webz.io/newsApiLite?token=${WEBZIO_TOKEN}&q=${encodeURIComponent(query)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Webz.io ${res.status}: ${res.statusText}`);
     const data = await res.json();

@@ -101,30 +101,45 @@ const GeopoliticalRisk = {
   },
 
   // Macro regions to track
+  // Each region has direct keywords + linked regions that spill over
   regions: {
     'US Domestic': {
-      keywords: ['fed', 'congress', 'white house', 'us economy', 'jobs report', 'inflation', 'gdp', 'unemployment', 'federal reserve'],
+      keywords: ['fed', 'congress', 'white house', 'us economy', 'jobs report', 'inflation', 'gdp', 'unemployment', 'federal reserve', 'us military', 'pentagon', 'us troops', 'us sanctions', 'us tariff', 'american', 'united states', 'washington', 'us defense', 'us attack', 'us strike', 'us airstrike', 'biden', 'trump', 'president', 'treasury', 'sec ', 'wall street', 'us debt', 'debt ceiling', 'government shutdown'],
       weight: 1.5,
+      // If these regions are hot, US heats up too (as actor/reactor)
+      spillover: ['Middle East', 'China / Asia', 'Russia / Eastern Europe'],
+      spilloverWeight: 0.3,
     },
     'Europe': {
-      keywords: ['ecb', 'eurozone', 'brexit', 'eu', 'european', 'germany', 'france', 'uk economy'],
+      keywords: ['ecb', 'eurozone', 'brexit', 'eu ', 'european', 'germany', 'france', 'uk economy', 'uk ', 'britain', 'nato', 'european union', 'italy', 'spain', 'netherlands', 'europe', 'eu sanctions', 'eu tariff', 'european central bank'],
       weight: 1.2,
+      spillover: ['Russia / Eastern Europe'],
+      spilloverWeight: 0.3,
     },
     'China / Asia': {
-      keywords: ['china', 'beijing', 'taiwan', 'japan', 'south korea', 'asia', 'chinese economy', 'boj', 'pboc'],
+      keywords: ['china', 'beijing', 'taiwan', 'japan', 'south korea', 'asia', 'chinese economy', 'boj', 'pboc', 'xi jinping', 'chinese military', 'south china sea', 'hong kong', 'semiconductor', 'chip ban', 'asia pacific', 'nikkei', 'shanghai', 'trade deficit china', 'us china'],
       weight: 1.3,
+      spillover: ['US Domestic'],
+      spilloverWeight: 0.2,
     },
     'Middle East': {
-      keywords: ['iran', 'iraq', 'saudi', 'israel', 'gaza', 'syria', 'yemen', 'lebanon', 'opec', 'gulf'],
+      keywords: ['iran', 'iraq', 'saudi', 'israel', 'gaza', 'syria', 'yemen', 'lebanon', 'opec', 'gulf', 'hezbollah', 'hamas', 'tehran', 'jerusalem', 'west bank', 'strait of hormuz', 'persian gulf', 'middle east', 'idf', 'irgc', 'ayatollah', 'netanyahu', 'mbs'],
       weight: 1.4,
+      // US involvement in Middle East heats up US too
+      spillover: ['US Domestic'],
+      spilloverWeight: 0.4,
     },
     'Russia / Eastern Europe': {
-      keywords: ['russia', 'moscow', 'ukraine', 'putin', 'kremlin', 'nato east'],
+      keywords: ['russia', 'moscow', 'ukraine', 'putin', 'kremlin', 'nato east', 'kyiv', 'zelensky', 'russian military', 'donbas', 'crimea', 'wagner', 'russian sanctions', 'nord stream', 'baltic', 'poland border'],
       weight: 1.3,
+      spillover: ['Europe', 'US Domestic'],
+      spilloverWeight: 0.3,
     },
     'Emerging Markets': {
-      keywords: ['emerging market', 'brazil', 'india', 'africa', 'latin america', 'argentina', 'turkey'],
+      keywords: ['emerging market', 'brazil', 'india', 'africa', 'latin america', 'argentina', 'turkey', 'south africa', 'mexico', 'indonesia', 'modi', 'brics', 'lula', 'peso', 'rupee'],
       weight: 0.8,
+      spillover: [],
+      spilloverWeight: 0,
     },
   },
 
@@ -250,8 +265,9 @@ const GeopoliticalRisk = {
 
   calcRegionRisk(articles) {
     const allText = articles.map(a => (a.headline + ' ' + a.summary).toLowerCase()).join(' ');
-    const regionScores = {};
 
+    // Pass 1: Direct keyword scoring
+    const rawScores = {};
     for (const [region, config] of Object.entries(this.regions)) {
       let hits = 0;
       const matched = [];
@@ -262,12 +278,39 @@ const GeopoliticalRisk = {
           matched.push(kw);
         }
       }
-      const score = Math.min(100, hits * config.weight * 5);
-      regionScores[region] = {
-        score: Math.round(score),
+      rawScores[region] = {
+        directScore: hits * config.weight * 5,
         hits,
         keywords: matched,
-        level: score > 60 ? 'Hot' : score > 30 ? 'Warm' : score > 10 ? 'Cool' : 'Quiet',
+      };
+    }
+
+    // Pass 2: Apply spillover — hot regions heat up linked regions
+    // e.g. Middle East hot → US Domestic gets 40% spillover
+    const regionScores = {};
+    for (const [region, config] of Object.entries(this.regions)) {
+      let spilloverScore = 0;
+      const spilloverFrom = [];
+      if (config.spillover && config.spilloverWeight) {
+        for (const linkedRegion of config.spillover) {
+          const linked = rawScores[linkedRegion];
+          if (linked && linked.directScore > 15) {
+            const spill = linked.directScore * config.spilloverWeight;
+            spilloverScore += spill;
+            spilloverFrom.push(linkedRegion + ' (+' + Math.round(spill) + ')');
+          }
+        }
+      }
+
+      const totalScore = Math.min(100, rawScores[region].directScore + spilloverScore);
+      regionScores[region] = {
+        score: Math.round(totalScore),
+        directScore: Math.round(rawScores[region].directScore),
+        spilloverScore: Math.round(spilloverScore),
+        spilloverFrom,
+        hits: rawScores[region].hits,
+        keywords: rawScores[region].keywords,
+        level: totalScore > 60 ? 'Hot' : totalScore > 30 ? 'Warm' : totalScore > 10 ? 'Cool' : 'Quiet',
       };
     }
 
@@ -518,13 +561,15 @@ const GeopoliticalRisk = {
         Quiet: 'bg-gray-500/10 border-gray-500/20 text-gray-400',
       };
       const lc = levelColors[risk.level] || levelColors.Quiet;
+      const hasSpillover = risk.spilloverScore > 0;
       html += `<div class="p-3 rounded-lg border ${lc}">
         <div class="flex items-center justify-between mb-1">
           <span class="text-sm font-medium">${region}</span>
           <span class="text-xs font-bold">${risk.score}</span>
         </div>
         <div class="text-xs font-semibold mb-1">${risk.level}</div>
-        ${risk.keywords.length ? '<div class="text-[10px] opacity-70">' + risk.keywords.slice(0, 5).join(', ') + '</div>' : ''}
+        ${risk.keywords.length ? '<div class="text-[10px] opacity-70 mb-1">' + risk.keywords.slice(0, 5).join(', ') + '</div>' : ''}
+        ${hasSpillover ? '<div class="text-[10px] opacity-50">Spillover: ' + risk.spilloverFrom.join(', ') + '</div>' : ''}
       </div>`;
     }
     html += '</div></div>';

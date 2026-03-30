@@ -91,23 +91,6 @@
             <div class="flex items-center gap-2 flex-wrap justify-end">
                 <span id="api-status" class="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400">Offline mode</span>
                 <span id="cache-status" class="text-xs px-2 py-1 rounded-full bg-gray-500/20 text-gray-400">No cache</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="Cache.export()" title="Export cache as JSON" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
-                    </button>
-                    <button onclick="Cache.import()" title="Import cache from JSON" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5-5 5M12 3v12"/></svg>
-                    </button>
-                    <button onclick="App.clearCache()" title="Clear cache" class="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-800 transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                </div>
-                <!-- <button onclick="App.runServerPipeline()" id="run-server-btn" class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors cursor-pointer" title="Run server-side pipeline (Edge Functions)">
-                    Run Server Pipeline
-                </button>
-                <button onclick="App.runAll()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors cursor-pointer" title="Run client-side stages (browser)">
-                    Run Client Stages
-                </button> -->
             </div>
         </header>
 
@@ -116,30 +99,9 @@
 
         <!-- Historical Data Panel -->
         <div id="history-panel" class="mb-8 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
-            <div class="flex items-center justify-between mb-3">
-                <div>
-                    <h3 class="text-sm font-semibold">Historical Price Data</h3>
-                    <p id="history-status" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Checking cache...</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="flex items-center gap-1">
-                        <button onclick="History.backupToSupabase().then(r => alert('Backed up ' + r.saved + ' stocks to Supabase'))" title="Backup to Supabase" class="p-1.5 rounded-lg text-gray-400 hover:text-green-400 hover:bg-gray-800 transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                        </button>
-                        <button onclick="History.restoreFromSupabase().then(r => { alert('Restored ' + r.restored + ' stocks from Supabase'); App.renderHistoryPanel(); })" title="Restore from Supabase" class="p-1.5 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/></svg>
-                        </button>
-                        <button onclick="History.exportFile()" title="Download as JSON file" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
-                        </button>
-                        <button onclick="History.importFile()" title="Import from JSON file" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5-5 5M12 3v12"/></svg>
-                        </button>
-                    </div>
-                    <button onclick="App.fetchHistory()" id="fetch-history-btn" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors cursor-pointer">
-                        Fetch History
-                    </button>
-                </div>
+            <div class="mb-3">
+                <h3 class="text-sm font-semibold">Historical Price Data</h3>
+                <p id="history-status" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Checking cache...</p>
             </div>
             <div id="history-grid" class="hidden"></div>
             <div id="history-progress" class="hidden">
@@ -151,38 +113,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Pipeline visualization (commented out) -->
-        <!--
-        <div class="mb-8 flex items-center gap-1 overflow-x-auto pb-2">
-            <template id="stage-pip-tpl">
-                <div class="flex items-center gap-1">
-                    <div class="w-8 h-1 rounded-full bg-gray-300 dark:bg-gray-700 transition-colors"></div>
-                </div>
-            </template>
-            <script>
-                // Render pipeline progress bar
-                document.addEventListener('DOMContentLoaded', () => {
-                    const bar = document.querySelector('.mb-8.flex');
-                    const labels = ['Geo','Pulse','Screen','Fund.','Tech.','News','Risk','Score','Action'];
-                    labels.forEach((label, i) => {
-                        const pip = document.createElement('div');
-                        pip.className = 'flex flex-col items-center gap-1 flex-1 min-w-0';
-                        pip.innerHTML = `
-                            <div id="pip-${i}" class="w-full h-1.5 rounded-full bg-gray-300 dark:bg-gray-700 transition-colors"></div>
-                            <span class="text-[10px] text-gray-400 truncate">${label}</span>
-                        `;
-                        bar.appendChild(pip);
-                        if (i < labels.length - 1) {
-                            const connector = document.createElement('div');
-                            connector.className = 'w-2 h-px bg-gray-300 dark:bg-gray-700 mt-[-10px]';
-                            bar.appendChild(connector);
-                        }
-                    });
-                });
-            </script>
-        </div>
-        -->
 
         <!-- Stage cards container -->
         <div id="stages" class="space-y-4"></div>

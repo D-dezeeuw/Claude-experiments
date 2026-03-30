@@ -3,6 +3,58 @@
  * Orchestrates the 8-stage pipeline and manages the dashboard UI.
  */
 
+/** Simple toast notification system */
+const Toast = {
+  _el: null,
+
+  _init() {
+    if (this._el) return;
+    const el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+    document.body.appendChild(el);
+    this._el = el;
+  },
+
+  show(msg, type = 'info') {
+    this._init();
+    const toast = document.createElement('div');
+    const colors = {
+      info: 'bg-blue-600/90 text-blue-50',
+      success: 'bg-green-600/90 text-green-50',
+      error: 'bg-red-600/90 text-red-50',
+    };
+    toast.className = `px-4 py-2 rounded-lg text-sm font-medium shadow-lg backdrop-blur ${colors[type] || colors.info} transition-all translate-x-0 opacity-100`;
+    toast.textContent = msg;
+    this._el.appendChild(toast);
+    // Auto-dismiss after 4s
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(100px)';
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
+    return toast;
+  },
+
+  /** Show a persistent toast that must be dismissed manually via returned ref */
+  persist(msg, type = 'info') {
+    this._init();
+    const toast = document.createElement('div');
+    const colors = {
+      info: 'bg-blue-600/90 text-blue-50',
+      success: 'bg-green-600/90 text-green-50',
+      error: 'bg-red-600/90 text-red-50',
+    };
+    toast.className = `px-4 py-2 rounded-lg text-sm font-medium shadow-lg backdrop-blur ${colors[type] || colors.info} flex items-center gap-2`;
+    toast.innerHTML = `<span class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>${msg}`;
+    this._el.appendChild(toast);
+    return {
+      update(newMsg) { toast.innerHTML = `<span class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>${newMsg}`; },
+      dismiss() { toast.style.opacity = '0'; toast.style.transform = 'translateX(100px)'; setTimeout(() => toast.remove(), 300); },
+    };
+  },
+};
+
 const STAGES = [
   GeopoliticalRisk,
   MarketPulse,
@@ -213,13 +265,17 @@ const App = {
 
     // 1. Try loading server-populated data from Supabase
     if (typeof DataClient !== 'undefined' && sbClient) {
+      const t = Toast.persist('Loading data from Supabase...');
       const serverData = await DataClient.load();
       if (serverData && Object.keys(serverData.pipeline || {}).length > 0) {
         const { stageResults, ctx } = DataClient.transformForUI(serverData);
         this.stageResults = { ...this.stageResults, ...stageResults };
         this.ctx = { ...this.ctx, ...ctx };
         this.renderDashboard();
-        console.info('Loaded server-side pipeline data');
+        t.dismiss();
+        Toast.show('Server data loaded', 'success');
+      } else {
+        t.dismiss();
       }
     }
 
@@ -228,9 +284,12 @@ const App = {
       const cached = Cache.load();
       if (cached) {
         this.restoreFromCache(cached);
+        Toast.show('Restored from cache', 'success');
       } else if (sbClient) {
         // 3. Try legacy Supabase tables
+        const t = Toast.persist('Restoring from Supabase...');
         await this.autoRestoreFromSupabase();
+        t.dismiss();
       }
     }
 
@@ -242,6 +301,7 @@ const App = {
     this.renderDashboard();
     this.renderHistoryPanel();
     await this.autoRestoreHistory();
+    Toast.show('Dashboard ready', 'success');
   },
 
   /** Trigger the server-side pipeline and reload data */
@@ -277,10 +337,14 @@ const App = {
 
   /** Run any pipeline stages that are missing data, in order */
   async runMissingStages() {
-    for (const stage of STAGES) {
-      if (this.stageResults[stage.id]) continue; // Already have data
+    const missing = STAGES.filter(s => !this.stageResults[s.id]);
+    if (!missing.length) return;
+
+    const t = Toast.persist('Running ' + missing[0].name + '...');
+    for (let i = 0; i < missing.length; i++) {
+      const stage = missing[i];
+      t.update('Running ' + stage.name + ' (' + (i + 1) + '/' + missing.length + ')...');
       try {
-        console.info('Running ' + stage.name + '...');
         const result = await stage.run(this.ctx);
         this.stageResults[stage.id] = result;
         await saveStageResult(stage.id, result);
@@ -289,6 +353,7 @@ const App = {
         console.warn('Failed to run ' + stage.name + ':', e);
       }
     }
+    t.dismiss();
   },
 
   /** Auto-restore price history from Supabase if not already cached locally */

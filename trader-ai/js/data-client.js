@@ -208,9 +208,10 @@ const DataClient = {
     // Sector news sentiment (from Webz.io + OpenRouter)
     if (p['sector-news']) {
       const sectorSentiment = p['sector-news'].sectorSentiment || {};
-      // Merge into news-sentiment stage results
       if (!stageResults['news-sentiment']) stageResults['news-sentiment'] = { stocks: [] };
       stageResults['news-sentiment'].sectorSentiment = sectorSentiment;
+      // Make available in ctx for scorecard + action plan
+      ctx.sectorSentiment = sectorSentiment;
     }
     if (p['sector-analysis']) {
       if (!stageResults['news-sentiment']) stageResults['news-sentiment'] = { stocks: [] };

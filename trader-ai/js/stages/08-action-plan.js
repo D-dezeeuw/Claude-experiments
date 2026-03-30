@@ -11,29 +11,34 @@ const ActionPlan = {
     const scorecard = ctx.scorecard || [];
     const risks = ctx.risk || [];
     const technicals = ctx.technicals || [];
+    const fundamentals = ctx.fundamentals || [];
+    const geo = ctx.geopolitical || {};
+    const sectorSentiment = ctx.sectorSentiment || {};
     if (!scorecard.length) return { error: 'No scorecard — run previous stages first', actions: [] };
 
     const actions = [];
-
-    const fundamentals = ctx.fundamentals || [];
 
     for (const stock of scorecard) {
       const risk = risks.find(r => r.symbol === stock.symbol) || {};
       const tech = technicals.find(t => t.symbol === stock.symbol) || {};
       const fund = fundamentals.find(f => f.symbol === stock.symbol) || {};
+      const secSent = sectorSentiment[stock.sector] || {};
       const price = stock.price || 0;
 
       let action = 'HOLD';
       let reasoning = [];
 
+      // Action decision uses invest score + vulnerability for nuance
       if (stock.composite >= 65 && stock.confidence !== 'Low') {
         action = 'BUY';
-        reasoning.push(`Strong composite score (${stock.composite})`);
+        reasoning.push(`Strong verdict (${stock.composite})`);
+        if (stock.investScore >= 65) reasoning.push(`Invest score: ${stock.investScore}`);
         if (stock.techScore >= 60) reasoning.push('Favorable technicals');
         if (stock.sentScore >= 60) reasoning.push('Positive sentiment');
       } else if (stock.composite <= 35 && stock.confidence !== 'Low') {
         action = 'SELL';
-        reasoning.push(`Weak composite score (${stock.composite})`);
+        reasoning.push(`Weak verdict (${stock.composite})`);
+        if (stock.vulnerability >= 60) reasoning.push(`High vulnerability: ${stock.vulnerability}`);
         if (stock.techScore <= 40) reasoning.push('Bearish technicals');
         if (stock.sentScore <= 40) reasoning.push('Negative sentiment');
       } else if (stock.composite >= 55) {
@@ -47,13 +52,32 @@ const ActionPlan = {
         reasoning.push('Mixed signals, no clear edge');
       }
 
+      // Vulnerability warning
+      if (stock.vulnerability >= 65) reasoning.push('Collapse risk elevated');
+      // Risk warning
+      if (stock.riskRating >= 70) reasoning.push('High volatility');
+
       // Enrichment reasoning
-      if (fund.insiderNetBuying === true) reasoning.push('Insider buying detected');
-      else if (fund.insiderNetBuying === false && action === 'SELL') reasoning.push('Insider selling detected');
+      if (fund.insiderNetBuying === true) reasoning.push('Insider buying');
+      else if (fund.insiderNetBuying === false && action !== 'BUY') reasoning.push('Insider selling');
       if (fund.analystConsensus === 'Strong Buy') reasoning.push('Analyst: Strong Buy');
       else if (fund.analystConsensus === 'Sell' || fund.analystConsensus === 'Strong Sell') reasoning.push('Analyst: ' + fund.analystConsensus);
       if (fund.earningsBeatRate >= 0.75) reasoning.push('Consistent earnings beats');
       else if (fund.earningsBeatRate != null && fund.earningsBeatRate < 0.25) reasoning.push('Earnings misses');
+
+      // Sector sentiment
+      if (secSent.sentimentScore > 0.3) reasoning.push('Sector tailwind');
+      else if (secSent.sentimentScore < -0.3) reasoning.push('Sector headwind');
+
+      // Geopolitical scenario impacts
+      if (geo.activeScenarios) {
+        for (const scenario of geo.activeScenarios) {
+          if (scenario.signalStrength >= 50) {
+            reasoning.push('Geo: ' + scenario.name);
+            break; // only show strongest
+          }
+        }
+      }
 
       // Targets based on technical levels
       const stopLoss = risk.stopLoss || tech.support || price * 0.95;
@@ -68,8 +92,12 @@ const ActionPlan = {
       actions.push({
         symbol: stock.symbol,
         company: stock.company,
+        sector: stock.sector,
         action,
         composite: stock.composite,
+        investScore: stock.investScore,
+        vulnerability: stock.vulnerability,
+        riskRating: stock.riskRating,
         confidence: stock.confidence,
         price: +price.toFixed(2),
         entry: action === 'BUY' ? +price.toFixed(2) : null,

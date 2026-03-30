@@ -38,10 +38,14 @@ case $CMD in
   analyze)
     call "analyze"
     ;;
+  sector-news)
+    call "fetch-sector-news"
+    ;;
   all-individual)
     echo "Running all functions individually..."
     call "fetch-market-data"
     call "fetch-news"
+    call "fetch-sector-news"
     call "fetch-fundamentals"
     call "analyze"
     call "fetch-history"
@@ -52,6 +56,7 @@ case $CMD in
     echo "  full            Run the orchestrator (calls all stages in order)"
     echo "  market          Fetch market data only (indices, sectors)"
     echo "  news            Fetch news only"
+    echo "  sector-news     Fetch sector news (Webz.io)"
     echo "  fundamentals    Fetch fundamentals only"
     echo "  history         Fetch price history only"
     echo "  analyze         Run NLP analysis only"

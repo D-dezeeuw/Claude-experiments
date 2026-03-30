@@ -109,6 +109,73 @@ Only include stocks that appear in the headlines. Be precise and data-driven.`
   }
 }
 
+async function analyzeSectors(sectorArticles: any[]) {
+  if (!OPENROUTER_KEY || sectorArticles.length === 0) return null;
+
+  // Group by sector
+  const bySector: Record<string, any[]> = {};
+  for (const a of sectorArticles) {
+    const sector = a.sector || 'Unknown';
+    if (!bySector[sector]) bySector[sector] = [];
+    bySector[sector].push(a);
+  }
+
+  // Build a compact summary for the LLM
+  const sectorSummaries = Object.entries(bySector).map(([sector, arts]) => {
+    const headlines = arts.slice(0, 5).map((a: any) => a.headline).join('\n  - ');
+    const posCount = arts.filter((a: any) => a.sentiment_score > 0).length;
+    const negCount = arts.filter((a: any) => a.sentiment_score < 0).length;
+    return `${sector} (${arts.length} articles, ${posCount} positive, ${negCount} negative):\n  - ${headlines}`;
+  }).join('\n\n');
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-haiku-4-5-20251001',
+        messages: [{
+          role: 'user',
+          content: `You are a financial sector analyst. Analyze these sector news summaries and return JSON only (no markdown):
+
+${sectorSummaries}
+
+Return this exact JSON structure:
+{
+  "sectors": {
+    "SECTOR_NAME": {
+      "sentiment": -1.0 to 1.0,
+      "outlook": "bullish" | "bearish" | "neutral",
+      "risks": ["risk1", "risk2"],
+      "opportunities": ["opp1", "opp2"],
+      "keyDrivers": ["driver1", "driver2"],
+      "summary": "1 sentence sector outlook"
+    }
+  },
+  "crossSectorThemes": ["theme1", "theme2", "theme3"],
+  "marketOutlook": "1-2 sentence overall market view based on sector analysis"
+}
+
+Be concise and data-driven. Only include sectors present in the data.`
+        }],
+        max_tokens: 2000,
+        temperature: 0.1,
+      }),
+    });
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error('Sector LLM analysis failed:', e);
+    return null;
+  }
+}
+
 function calcRegionRisk(articles: any[]) {
   const allText = articles.map(a => ((a.headline || '') + ' ' + (a.summary || '')).toLowerCase()).join(' ');
 
@@ -185,15 +252,21 @@ Deno.serve(async (req) => {
     const regionRisk = calcRegionRisk(articles);
     const threatScore = calcThreatScore(articles);
 
-    // 2. LLM-powered analysis
+    // 2. LLM-powered analysis (general + company news)
     const llmAnalysis = await analyzeWithLLM(articles);
 
-    // 3. Combine results
+    // 3. Sector news analysis via OpenRouter
+    const sectorArticles = articles.filter((a: any) => a.category === 'sector');
+    const sectorLLM = sectorArticles.length > 0 ? await analyzeSectors(sectorArticles) : null;
+
+    // 4. Combine results
     const analysis = {
       regionRisk,
       threatScore,
       llm: llmAnalysis,
+      sectorAnalysis: sectorLLM,
       articleCount: articles.length,
+      sectorArticleCount: sectorArticles.length,
       analyzedAt: new Date().toISOString(),
     };
 
@@ -204,6 +277,16 @@ Deno.serve(async (req) => {
       data: analysis,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'stage,run_date' });
+
+    // Update sector analysis in pipeline_data if available
+    if (sectorLLM) {
+      await sb.from('pipeline_data').upsert({
+        stage: 'sector-analysis',
+        run_date: dateStr,
+        data: sectorLLM,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'stage,run_date' });
+    }
 
     // Also update per-stock sentiment from LLM if available
     if (llmAnalysis?.stock_sentiments) {

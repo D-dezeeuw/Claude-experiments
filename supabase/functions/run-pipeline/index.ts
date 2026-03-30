@@ -39,12 +39,13 @@ Deno.serve(async (req) => {
   const dateStr = today();
   const results: any[] = [];
 
-  // Stage 1: Market data + News in parallel
-  const [marketResult, newsResult] = await Promise.all([
+  // Stage 1: Market data + News + Sector news in parallel
+  const [marketResult, newsResult, sectorNewsResult] = await Promise.all([
     callFunction('fetch-market-data'),
     callFunction('fetch-news'),
+    callFunction('fetch-sector-news'),
   ]);
-  results.push(marketResult, newsResult);
+  results.push(marketResult, newsResult, sectorNewsResult);
 
   // Stage 2: Fundamentals (needs rate limiting, runs alone)
   const fundResult = await callFunction('fetch-fundamentals');

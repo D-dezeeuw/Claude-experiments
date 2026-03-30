@@ -106,6 +106,11 @@ const NewsSentiment = {
 
     let html = '';
 
+    // Sector sentiment overview (from server-side Webz.io data)
+    if (data.sectorSentiment) {
+      html += this.renderSectorSentiment(data.sectorSentiment, data.sectorAnalysis);
+    }
+
     for (const stock of data.stocks) {
       const sentColors = {
         Positive: 'bg-green-500/20 text-green-400',
@@ -142,6 +147,81 @@ const NewsSentiment = {
       html += '<p class="mt-2 text-xs text-yellow-500/70 italic">Demo data — add your Finnhub API key in config.js for live data</p>';
     }
 
+    return html;
+  },
+
+  renderSectorSentiment(sectorSentiment, sectorAnalysis) {
+    let html = '<div class="mb-6">';
+    html += '<h4 class="text-sm font-semibold mb-3">Sector Sentiment (Webz.io + AI Analysis)</h4>';
+
+    // Market outlook from LLM if available
+    if (sectorAnalysis?.marketOutlook) {
+      html += `<p class="text-sm text-gray-400 mb-3 italic">${sectorAnalysis.marketOutlook}</p>`;
+    }
+    if (sectorAnalysis?.crossSectorThemes?.length) {
+      html += '<div class="flex flex-wrap gap-1 mb-3">';
+      for (const theme of sectorAnalysis.crossSectorThemes) {
+        html += `<span class="px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-400">${theme}</span>`;
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">';
+
+    for (const [sector, data] of Object.entries(sectorSentiment)) {
+      const d = data;
+      const score = d.sentimentScore || 0;
+      const barWidth = Math.round(Math.abs(score) * 100);
+      const barColor = score > 0.2 ? 'bg-green-500' : score < -0.2 ? 'bg-red-500' : 'bg-gray-500';
+      const labelColor = score > 0.2 ? 'text-green-400' : score < -0.2 ? 'text-red-400' : 'text-gray-400';
+
+      // LLM analysis for this sector
+      const llm = sectorAnalysis?.sectors?.[sector];
+
+      html += `<div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-semibold">${sector}</span>
+          <span class="text-xs font-semibold ${labelColor}">${d.sentimentLabel} (${score >= 0 ? '+' : ''}${score})</span>
+        </div>
+        <div class="flex h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 mb-2">
+          <div class="${barColor} h-1.5 rounded-full" style="width:${Math.max(barWidth, 5)}%"></div>
+        </div>
+        <div class="flex gap-2 text-[10px] text-gray-500 mb-1">
+          <span class="text-green-400">${d.positive || 0} pos</span>
+          <span class="text-gray-400">${d.neutral || 0} neu</span>
+          <span class="text-red-400">${d.negative || 0} neg</span>
+          <span>${d.articleCount || 0} articles</span>
+        </div>`;
+
+      // LLM outlook
+      if (llm) {
+        const outlookColor = llm.outlook === 'bullish' ? 'text-green-400' : llm.outlook === 'bearish' ? 'text-red-400' : 'text-gray-400';
+        html += `<div class="text-xs ${outlookColor} font-medium mb-1">${llm.outlook?.charAt(0).toUpperCase() + llm.outlook?.slice(1) || ''}</div>`;
+        if (llm.summary) {
+          html += `<p class="text-[10px] text-gray-500 dark:text-gray-400 mb-1">${llm.summary}</p>`;
+        }
+        if (llm.risks?.length) {
+          html += '<div class="flex flex-wrap gap-1">';
+          for (const r of llm.risks.slice(0, 2)) {
+            html += `<span class="px-1.5 py-0.5 rounded text-[9px] bg-red-500/10 text-red-400">${r}</span>`;
+          }
+          html += '</div>';
+        }
+      }
+
+      // Top headlines
+      if (d.headlines?.length) {
+        html += '<div class="mt-2 space-y-1">';
+        for (const h of d.headlines.slice(0, 2)) {
+          html += `<p class="text-[10px] text-gray-500 dark:text-gray-400 truncate">${h}</p>`;
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    html += '</div></div>';
     return html;
   },
 };

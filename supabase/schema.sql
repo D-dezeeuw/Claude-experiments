@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS news_articles (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   run_date DATE NOT NULL,
   symbol TEXT,
-  category TEXT,          -- 'general' or 'company'
+  category TEXT,          -- 'general', 'company', or 'sector'
+  sector TEXT,            -- GICS sector name (for sector news)
   headline TEXT,
   source TEXT,
   url TEXT,

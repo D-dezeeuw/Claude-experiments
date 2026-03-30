@@ -205,6 +205,18 @@ const DataClient = {
       ctx.sentiment = sentimentStocks;
     }
 
+    // Sector news sentiment (from Webz.io + OpenRouter)
+    if (p['sector-news']) {
+      const sectorSentiment = p['sector-news'].sectorSentiment || {};
+      // Merge into news-sentiment stage results
+      if (!stageResults['news-sentiment']) stageResults['news-sentiment'] = { stocks: [] };
+      stageResults['news-sentiment'].sectorSentiment = sectorSentiment;
+    }
+    if (p['sector-analysis']) {
+      if (!stageResults['news-sentiment']) stageResults['news-sentiment'] = { stocks: [] };
+      stageResults['news-sentiment'].sectorAnalysis = p['sector-analysis'];
+    }
+
     // Price history → inject into History module for sparklines
     if (data.history && data.history.length > 0) {
       for (const h of data.history) {

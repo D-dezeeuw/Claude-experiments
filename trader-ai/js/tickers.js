@@ -90,5 +90,9 @@ function tickerName(symbol) {
 function tickerLabel(symbol, extraClasses) {
   const name = tickerName(symbol);
   const cls = extraClasses || '';
-  return `<span class="cursor-help border-b border-dotted border-gray-500 ${cls}" title="${name}">${symbol}</span>`;
+  if (name === symbol) {
+    // No mapping found, just render plain
+    return `<span class="${cls}">${symbol}</span>`;
+  }
+  return `<span class="ticker-tip relative inline-block cursor-help border-b border-dotted border-gray-500 ${cls}" data-tip="${name}">${symbol}</span>`;
 }

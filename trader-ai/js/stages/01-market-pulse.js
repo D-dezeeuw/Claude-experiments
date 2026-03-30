@@ -40,6 +40,7 @@ const MarketPulse = {
     // Economic calendar (Finnhub)
     results.events = await this.fetchEconomicCalendar();
 
+    ctx.marketPulse = results;
     return results;
   },
 

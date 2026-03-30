@@ -87,12 +87,22 @@ const DailyScorecard = {
       let geoScore = 100 - (geo.threatLevel?.score || 0);
       // Adjust for sector-specific scenario impacts
       if (geo.activeScenarios) {
+        const sectorMap = {
+          'Technology': ['tech', 'cybersecurity', 'remote_tech'],
+          'Consumer Disc.': ['consumer'],
+          'Consumer Staples': ['consumer_staples'],
+          'Financials': ['financials', 'insurance'],
+          'Healthcare': ['healthcare'],
+          'Energy': ['energy'],
+          'Industrials': ['industrials', 'construction', 'defense', 'airlines'],
+          'Utilities': ['utilities'],
+          'Communication': ['tech', 'consumer'],
+        };
+        const stockTags = sectorMap[stock.sector] || [];
         for (const scenario of geo.activeScenarios) {
-          for (const [sector, impact] of Object.entries(scenario.impact || {})) {
-            const sectorNorm = (stock.sector || '').toLowerCase().replace(/[^a-z]/g, '');
-            const scenarioSector = sector.toLowerCase().replace(/[^a-z]/g, '');
-            if (sectorNorm.includes(scenarioSector) || scenarioSector.includes(sectorNorm)) {
-              geoScore += impact * 5; // positive impact helps, negative hurts
+          for (const [impactKey, impact] of Object.entries(scenario.impact || {})) {
+            if (stockTags.includes(impactKey)) {
+              geoScore += impact * 5;
             }
           }
         }

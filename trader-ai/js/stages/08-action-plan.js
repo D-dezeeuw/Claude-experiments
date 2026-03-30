@@ -58,7 +58,8 @@ const ActionPlan = {
       // Targets based on technical levels
       const stopLoss = risk.stopLoss || tech.support || price * 0.95;
       const resistance = tech.resistance || price * 1.08;
-      const riskReward = ((resistance - price) / (price - stopLoss)).toFixed(1);
+      const riskDenom = price - stopLoss;
+      const riskReward = riskDenom > 0 ? ((resistance - price) / riskDenom).toFixed(1) : 'N/A';
 
       // Position sizing from risk stage
       const shares = risk.shares || 0;

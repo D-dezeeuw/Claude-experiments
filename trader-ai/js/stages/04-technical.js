@@ -151,6 +151,11 @@ const TechnicalAnalysis = {
       resistance: +(price * 1.07).toFixed(2),
       volumeRatio: +(0.5 + (seed % 30) / 10).toFixed(2),
       signal,
+      chg7d: +((seed % 10) - 5).toFixed(1),
+      chg30d: +((seed % 20) - 10).toFixed(1),
+      chg90d: +((seed % 40) - 20).toFixed(1),
+      dataPoints: 90,
+      fromHistory: false,
       mock: true,
     };
   },

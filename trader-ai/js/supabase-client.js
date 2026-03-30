@@ -2,21 +2,21 @@
  * Supabase client initialization.
  * Requires config.js to be loaded first.
  */
-let supabase = null;
+let sbClient = null;
 
 function initSupabase() {
-  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
+  if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured — running in offline mode');
     return null;
   }
-  supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-  return supabase;
+  sbClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  return sbClient;
 }
 
 /** Save stage results to Supabase */
 async function saveStageResult(stage, data) {
-  if (!supabase) return null;
-  const { data: result, error } = await supabase
+  if (!sbClient) return null;
+  const { data: result, error } = await sbClient
     .from('stage_results')
     .upsert({
       stage_id: stage,
@@ -31,8 +31,8 @@ async function saveStageResult(stage, data) {
 
 /** Load latest stage results from Supabase */
 async function loadStageResult(stage) {
-  if (!supabase) return null;
-  const { data, error } = await supabase
+  if (!sbClient) return null;
+  const { data, error } = await sbClient
     .from('stage_results')
     .select('*')
     .eq('stage_id', stage)
@@ -44,8 +44,8 @@ async function loadStageResult(stage) {
 
 /** Load the user's current watchlist */
 async function loadWatchlist() {
-  if (!supabase) return [];
-  const { data, error } = await supabase
+  if (!sbClient) return [];
+  const { data, error } = await sbClient
     .from('watchlist')
     .select('*')
     .order('added_at', { ascending: false });
@@ -55,14 +55,14 @@ async function loadWatchlist() {
 
 /** Save tickers to watchlist */
 async function saveWatchlist(tickers) {
-  if (!supabase) return;
+  if (!sbClient) return;
   const rows = tickers.map(t => ({
     symbol: t.symbol,
     company: t.company,
     sector: t.sector || '',
     added_at: new Date().toISOString(),
   }));
-  const { error } = await supabase
+  const { error } = await sbClient
     .from('watchlist')
     .upsert(rows, { onConflict: 'symbol' });
   if (error) console.error('Watchlist save failed:', error);

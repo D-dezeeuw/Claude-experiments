@@ -12,7 +12,19 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/theme.js"></script>
-    <script src="js/config.js"></script>
+    <script>
+        // Default config — overridden by config.js if present (gitignored, local-only)
+        if (typeof CONFIG === 'undefined') {
+            var CONFIG = {
+                SUPABASE_URL: '',
+                SUPABASE_ANON_KEY: '',
+                FINNHUB_API_KEY: '',
+                ALPHA_VANTAGE_KEY: '',
+                NEWSAPI_KEY: '',
+            };
+        }
+    </script>
+    <script src="js/config.js" onerror="console.info('No config.js found — running in demo mode')"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/stages/01-market-pulse.js"></script>
     <script src="js/stages/02-stock-screener.js"></script>

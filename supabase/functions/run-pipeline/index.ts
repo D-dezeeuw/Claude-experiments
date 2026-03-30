@@ -7,6 +7,11 @@ import {
   SUPABASE_URL, SUPABASE_SERVICE_KEY,
 } from '../_shared/config.ts';
 
+// Use service role key if available, otherwise fall back to anon key
+const AUTH_KEY = SUPABASE_SERVICE_KEY
+  || Deno.env.get('SUPABASE_ANON_KEY')
+  || '';
+
 async function callFunction(name: string) {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
   const start = Date.now();
@@ -15,7 +20,7 @@ async function callFunction(name: string) {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Authorization': `Bearer ${AUTH_KEY}`,
         'Content-Type': 'application/json',
       },
     });

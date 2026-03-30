@@ -14,6 +14,91 @@ const STAGES = [
   ActionPlan,
 ];
 
+/** Local flat-file cache via localStorage */
+const Cache = {
+  KEY: 'traderai-cache',
+
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (!raw) return null;
+      const cache = JSON.parse(raw);
+      // Check if cache is from today
+      const today = new Date().toISOString().split('T')[0];
+      if (cache._date !== today) {
+        console.info('Cache is from ' + cache._date + ', today is ' + today + ' — stale, ignoring');
+        return null;
+      }
+      return cache;
+    } catch (e) {
+      console.warn('Cache load failed:', e);
+      return null;
+    }
+  },
+
+  save(stageResults, ctx) {
+    try {
+      const cache = {
+        _date: new Date().toISOString().split('T')[0],
+        _timestamp: new Date().toISOString(),
+        stageResults: stageResults,
+        ctx: {
+          watchlist: ctx.watchlist || [],
+          fundamentals: ctx.fundamentals || [],
+          technicals: ctx.technicals || [],
+          sentiment: ctx.sentiment || [],
+          risk: ctx.risk || [],
+          scorecard: ctx.scorecard || [],
+        },
+      };
+      localStorage.setItem(this.KEY, JSON.stringify(cache));
+    } catch (e) {
+      console.warn('Cache save failed:', e);
+    }
+  },
+
+  clear() {
+    localStorage.removeItem(this.KEY);
+  },
+
+  /** Download cache as a .json file */
+  export() {
+    const raw = localStorage.getItem(this.KEY);
+    if (!raw) return alert('No cached data to export');
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'traderai-cache-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  /** Import cache from a .json file */
+  import() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (!data._date || !data.stageResults) throw new Error('Invalid cache file');
+          localStorage.setItem(this.KEY, JSON.stringify(data));
+          App.restoreFromCache(data);
+        } catch (err) {
+          alert('Invalid cache file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  },
+};
+
 const App = {
   ctx: {},           // shared context passed between stages
   stageResults: {},  // cached results per stage id
@@ -21,7 +106,21 @@ const App = {
 
   init() {
     initSupabase();
+
+    // Try to restore from cache
+    const cached = Cache.load();
+    if (cached) {
+      this.restoreFromCache(cached);
+    } else {
+      this.renderDashboard();
+    }
+  },
+
+  restoreFromCache(cached) {
+    this.stageResults = cached.stageResults || {};
+    this.ctx = cached.ctx || {};
     this.renderDashboard();
+    console.info('Restored from cache (' + cached._timestamp + ')');
   },
 
   renderDashboard() {
@@ -29,6 +128,20 @@ const App = {
     if (!container) return;
 
     container.innerHTML = '';
+
+    // Update cache status indicator
+    const cacheStatus = document.getElementById('cache-status');
+    if (cacheStatus) {
+      const cached = Cache.load();
+      if (cached) {
+        const time = new Date(cached._timestamp).toLocaleTimeString();
+        cacheStatus.textContent = 'Cached ' + time;
+        cacheStatus.className = 'text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400';
+      } else {
+        cacheStatus.textContent = 'No cache';
+        cacheStatus.className = 'text-xs px-2 py-1 rounded-full bg-gray-500/20 text-gray-400';
+      }
+    }
 
     STAGES.forEach((stage, i) => {
       const result = this.stageResults[stage.id];
@@ -122,6 +235,7 @@ const App = {
     try {
       const result = await stage.run(this.ctx);
       this.stageResults[stage.id] = result;
+      Cache.save(this.stageResults, this.ctx);
       await saveStageResult(stage.id, result);
     } catch (e) {
       console.error(`Stage ${stage.name} failed:`, e);
@@ -142,6 +256,13 @@ const App = {
       // Small delay between stages for UI feedback
       await new Promise(r => setTimeout(r, 300));
     }
+  },
+
+  clearCache() {
+    Cache.clear();
+    this.stageResults = {};
+    this.ctx = {};
+    this.renderDashboard();
   },
 };
 

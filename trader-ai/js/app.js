@@ -71,16 +71,43 @@ const Cache = {
     return history;
   },
 
+  /** Strip bulky fields to keep cache small */
+  _slim(stageResults) {
+    const slim = {};
+    for (const [key, val] of Object.entries(stageResults)) {
+      if (!val || typeof val !== 'object') { slim[key] = val; continue; }
+      if (key === 'fundamentals' && val.stocks) {
+        // Strip raw transaction/recommendation/earnings arrays (derived scores remain)
+        slim[key] = { stocks: val.stocks.map(s => {
+          const { insiderTransactions, analystRecommendations, earningsHistory, ...rest } = s;
+          return rest;
+        })};
+      } else if (key === 'news-sentiment' && val.stocks) {
+        // Strip full article bodies
+        slim[key] = { stocks: val.stocks.map(s => {
+          const { articles, ...rest } = s;
+          return { ...rest, articleCount: (articles || []).length };
+        })};
+      } else {
+        slim[key] = val;
+      }
+    }
+    return slim;
+  },
+
   save(stageResults, ctx) {
     try {
       const today = this._today();
       const cache = {
         _date: today,
         _timestamp: new Date().toISOString(),
-        stageResults: stageResults,
+        stageResults: this._slim(stageResults),
         ctx: {
           watchlist: ctx.watchlist || [],
-          fundamentals: ctx.fundamentals || [],
+          fundamentals: (ctx.fundamentals || []).map(s => {
+            const { insiderTransactions, analystRecommendations, earningsHistory, ...rest } = s;
+            return rest;
+          }),
           technicals: ctx.technicals || [],
           sentiment: ctx.sentiment || [],
           risk: ctx.risk || [],
@@ -96,6 +123,7 @@ const Cache = {
         this._saveIndex(dates);
       }
     } catch (e) {
+      if (e.name === 'QuotaExceededError') return; // Data is in Supabase, not critical
       console.warn('Cache save failed:', e);
     }
   },

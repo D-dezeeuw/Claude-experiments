@@ -8,7 +8,7 @@
 const History = {
   PREFIX: 'traderai-prices-',
 
-  MAX_CANDLES: 300, // Keep last 300 trading days (~14 months) to fit localStorage
+  MAX_CANDLES: 60, // Keep last 60 trading days (~3 months) to fit localStorage
 
   _key(symbol) {
     return this.PREFIX + symbol;
@@ -32,8 +32,16 @@ const History = {
       if (data && data.candles && data.candles.length > this.MAX_CANDLES) {
         data = { ...data, candles: data.candles.slice(-this.MAX_CANDLES), count: this.MAX_CANDLES };
       }
+      // Strip any extra fields from candles to minimize size
+      if (data && data.candles) {
+        data = { ...data, candles: data.candles.map(c => ({
+          date: c.date, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume
+        }))};
+      }
       localStorage.setItem(this._key(symbol), JSON.stringify(data));
     } catch (e) {
+      // If quota exceeded, skip silently — data is still in Supabase
+      if (e.name === 'QuotaExceededError') return;
       console.warn('History save failed for ' + symbol + ':', e);
     }
   },

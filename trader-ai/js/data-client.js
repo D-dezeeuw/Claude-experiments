@@ -59,11 +59,14 @@ const DataClient = {
     }
   },
 
-  /** Save to localStorage cache */
+  /** Save to localStorage cache (skip history to save space) */
   saveToCache(data) {
     try {
-      localStorage.setItem(this.CACHE_KEY, JSON.stringify(data));
+      // Strip price history from cache — it's stored separately per-symbol
+      const slim = { ...data, history: [] };
+      localStorage.setItem(this.CACHE_KEY, JSON.stringify(slim));
     } catch (e) {
+      if (e.name === 'QuotaExceededError') return;
       console.warn('Cache save failed:', e);
     }
   },

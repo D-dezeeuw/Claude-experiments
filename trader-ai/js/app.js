@@ -179,14 +179,79 @@ const App = {
   stageResults: {},  // cached results per stage id
   running: null,     // currently running stage id
 
-  init() {
+  async init() {
     initSupabase();
 
-    // Try to restore from cache
+    // Try to restore from localStorage first
     const cached = Cache.load();
     if (cached) {
       this.restoreFromCache(cached);
+      this.renderHistoryPanel();
     } else {
+      // Nothing in localStorage — try Supabase auto-restore
+      this.renderDashboard();
+      await this.autoRestoreFromSupabase();
+    }
+  },
+
+  /** Auto-restore stage results and price history from Supabase when localStorage is empty */
+  async autoRestoreFromSupabase() {
+    if (!sbClient) {
+      this.renderHistoryPanel();
+      return;
+    }
+
+    const statusEl = document.getElementById('history-status');
+    if (statusEl) statusEl.textContent = 'Checking Supabase for saved data...';
+
+    let restored = false;
+
+    // 1. Restore stage results (today's)
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: stageRows, error } = await sbClient
+        .from('stage_results')
+        .select('*')
+        .eq('run_date', today);
+
+      if (!error && stageRows && stageRows.length > 0) {
+        const stageResults = {};
+        const ctx = {};
+        for (const row of stageRows) {
+          stageResults[row.stage_id] = row.data;
+          // Rebuild ctx from known stage outputs
+          if (row.stage_id === 'stock-screener' && row.data?.watchlist) ctx.watchlist = row.data.watchlist;
+          if (row.stage_id === 'fundamentals' && row.data?.stocks) ctx.fundamentals = row.data.stocks;
+          if (row.stage_id === 'technical' && row.data?.stocks) ctx.technicals = row.data.stocks;
+          if (row.stage_id === 'news-sentiment' && row.data?.stocks) ctx.sentiment = row.data.stocks;
+          if (row.stage_id === 'risk' && row.data?.stocks) ctx.risk = row.data.stocks;
+          if (row.stage_id === 'scorecard' && row.data?.stocks) ctx.scorecard = row.data.stocks;
+          if (row.stage_id === 'geopolitical') ctx.geopolitical = row.data;
+        }
+        this.stageResults = stageResults;
+        this.ctx = ctx;
+        // Save back to localStorage so next reload is instant
+        Cache.save(stageResults, ctx);
+        this.renderDashboard();
+        restored = true;
+        console.info('Auto-restored ' + stageRows.length + ' stage results from Supabase');
+      }
+    } catch (e) {
+      console.warn('Stage results restore from Supabase failed:', e);
+    }
+
+    // 2. Restore price history
+    try {
+      const result = await History.restoreFromSupabase();
+      if (result.restored > 0) {
+        restored = true;
+        console.info('Auto-restored ' + result.restored + ' stocks of price history from Supabase');
+      }
+    } catch (e) {
+      console.warn('Price history restore from Supabase failed:', e);
+    }
+
+    if (restored) {
       this.renderDashboard();
     }
     this.renderHistoryPanel();

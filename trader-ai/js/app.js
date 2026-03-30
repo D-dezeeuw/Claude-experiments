@@ -197,6 +197,8 @@ const App = {
         this.renderDashboard();
         this.renderHistoryPanel();
         console.info('Loaded server-side pipeline data');
+        // Still restore price history if missing locally
+        await this.autoRestoreHistory();
         return;
       }
     }
@@ -206,6 +208,8 @@ const App = {
     if (cached) {
       this.restoreFromCache(cached);
       this.renderHistoryPanel();
+      // Still restore price history if missing locally
+      await this.autoRestoreHistory();
     } else {
       // 3. Nothing anywhere — try Supabase auto-restore (legacy tables)
       await this.autoRestoreFromSupabase();
@@ -241,6 +245,25 @@ const App = {
     }
 
     if (btn) { btn.disabled = false; btn.textContent = 'Run Server Pipeline'; btn.classList.remove('opacity-50'); }
+  },
+
+  /** Auto-restore price history from Supabase if not already cached locally */
+  async autoRestoreHistory() {
+    if (!sbClient || typeof History === 'undefined') return;
+    const cached = History.cachedSymbols();
+    if (cached.length > 0) return; // Already have history
+    const statusEl = document.getElementById('history-status');
+    if (statusEl) statusEl.textContent = 'Restoring price history from Supabase...';
+    try {
+      const result = await History.restoreFromSupabase();
+      if (result.restored > 0) {
+        console.info('Auto-restored ' + result.restored + ' stocks of price history from Supabase');
+        this.renderHistoryPanel();
+        this.renderSummary();
+      }
+    } catch (e) {
+      console.warn('Price history auto-restore failed:', e);
+    }
   },
 
   /** Auto-restore stage results and price history from Supabase when localStorage is empty */

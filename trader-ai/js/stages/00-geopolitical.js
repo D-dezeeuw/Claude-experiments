@@ -590,7 +590,7 @@ const GeopoliticalRisk = {
         html += `<div class="p-3 rounded-lg border border-gray-200 dark:border-gray-800">
           <div class="flex items-center justify-between mb-2">
             <span class="font-semibold">${s.name}</span>
-            <span class="${sigColor} text-sm font-bold">${s.signalLabel} signal <span class="font-mono">(${s.signalStrength}/100)</span></span>
+            <span class="${sigColor} text-sm font-bold">Signal Strength <span class="font-mono">${s.signalStrength}/100</span></span>
           </div>
           <div class="flex flex-wrap gap-1">`;
         for (const [sector, impact] of Object.entries(s.impact)) {

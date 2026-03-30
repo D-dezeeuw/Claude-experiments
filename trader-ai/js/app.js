@@ -197,11 +197,187 @@ const App = {
     console.info('Restored from cache (' + cached._timestamp + ')');
   },
 
+  renderSummary() {
+    const el = document.getElementById('executive-summary');
+    if (!el) return;
+
+    const scorecard = this.stageResults['scorecard'];
+    const actionPlan = this.stageResults['action-plan'];
+    const risk = this.stageResults['risk'];
+    const marketPulse = this.stageResults['market-pulse'];
+
+    // Need at least scorecard data
+    if (!scorecard || !scorecard.stocks || !scorecard.stocks.length) {
+      el.classList.add('hidden');
+      return;
+    }
+
+    const sorted = [...scorecard.stocks].sort((a, b) => b.composite - a.composite);
+    const top3 = sorted.slice(0, 3);
+    const bottom3 = sorted.slice(-3).reverse();
+
+    // Get action plan data for targets
+    const actions = actionPlan?.actions || [];
+    const risks = risk?.stocks || [];
+
+    // Market overview from pulse
+    const indices = marketPulse?.indices || [];
+    const spyData = indices.find(i => i.symbol === 'SPY');
+    const marketTrend = spyData ? (spyData.changePercent >= 0 ? 'up' : 'down') : null;
+
+    el.classList.remove('hidden');
+    el.innerHTML = this.buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData);
+  },
+
+  buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+
+    // Market sentiment line
+    let marketLine = '';
+    if (spyData) {
+      const up = spyData.changePercent >= 0;
+      const arrow = up ? '&#9650;' : '&#9660;';
+      const color = up ? 'text-green-400' : 'text-red-400';
+      marketLine = `<span class="${color} font-medium">S&P 500 ${arrow} ${up ? '+' : ''}${spyData.changePercent}%</span>`;
+    }
+
+    let html = `
+      <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <!-- Header bar -->
+        <div class="px-5 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold">Daily Brief</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">${dateStr} · ${timeStr}</span>
+          </div>
+          ${marketLine ? '<div class="text-sm">' + marketLine + '</div>' : ''}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-0 md:divide-x divide-gray-200 dark:divide-gray-800">
+
+          <!-- TOP 3 BUY -->
+          <div class="p-5">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="w-6 h-6 rounded bg-green-500/20 text-green-400 flex items-center justify-center text-xs font-bold">&#9650;</span>
+              <span class="text-sm font-semibold">Top 3 — Buy</span>
+            </div>
+            <div class="space-y-3">`;
+
+    for (const stock of top3) {
+      html += this.buildStockCard(stock, actions, risks, 'buy');
+    }
+
+    html += `
+            </div>
+          </div>
+
+          <!-- TOP 3 SELL -->
+          <div class="p-5 border-t md:border-t-0 border-gray-200 dark:border-gray-800">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="w-6 h-6 rounded bg-red-500/20 text-red-400 flex items-center justify-center text-xs font-bold">&#9660;</span>
+              <span class="text-sm font-semibold">Top 3 — Sell / Avoid</span>
+            </div>
+            <div class="space-y-3">`;
+
+    for (const stock of bottom3) {
+      html += this.buildStockCard(stock, actions, risks, 'sell');
+    }
+
+    html += `
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    return html;
+  },
+
+  buildStockCard(stock, actions, risks, side) {
+    const action = actions.find(a => a.symbol === stock.symbol) || {};
+    const riskData = risks.find(r => r.symbol === stock.symbol) || {};
+
+    const isBuy = side === 'buy';
+    const scoreColor = stock.composite >= 65 ? 'text-green-400' : stock.composite >= 45 ? 'text-yellow-400' : 'text-red-400';
+    const barColor = stock.composite >= 65 ? 'bg-green-500' : stock.composite >= 45 ? 'bg-yellow-500' : 'bg-red-500';
+
+    // Confidence badge
+    const confColors = {
+      High: 'bg-green-500/20 text-green-400',
+      Medium: 'bg-yellow-500/20 text-yellow-400',
+      Low: 'bg-gray-500/20 text-gray-400',
+    };
+    const confClass = confColors[stock.confidence] || confColors.Low;
+
+    // Price change from screener context
+    const change = stock.changePercent || 0;
+    const changeUp = change >= 0;
+    const changeColor = changeUp ? 'text-green-400' : 'text-red-400';
+
+    // Risk label
+    const riskLabel = riskData.riskLabel || '-';
+    const riskColors = { Low: 'text-green-400', Medium: 'text-yellow-400', High: 'text-red-400' };
+    const riskColor = riskColors[riskLabel] || 'text-gray-400';
+
+    let html = `
+      <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-base">${stock.symbol}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">${stock.company || ''}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-lg font-bold ${scoreColor}">${stock.composite}</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${confClass}">${stock.confidence}</span>
+          </div>
+        </div>
+        <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1 mb-2">
+          <div class="${barColor} h-1 rounded-full" style="width:${stock.composite}%"></div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+          <span>Price <span class="font-mono text-gray-300">${stock.price ? '$' + stock.price.toFixed(2) : '-'}</span></span>`;
+
+    if (action.entry && isBuy) {
+      html += `<span>Entry <span class="font-mono text-gray-300">$${action.entry}</span></span>`;
+    }
+    if (action.stopLoss) {
+      html += `<span>Stop <span class="font-mono text-red-400">$${action.stopLoss}</span></span>`;
+    }
+    if (action.target && isBuy) {
+      html += `<span>Target <span class="font-mono text-green-400">$${action.target}</span></span>`;
+    }
+    if (action.riskReward && isBuy) {
+      html += `<span>R:R <span class="font-mono text-gray-300">${action.riskReward}</span></span>`;
+    }
+
+    html += `
+          <span>Risk <span class="font-mono ${riskColor}">${riskLabel}</span></span>
+          <span>Fund <span class="font-mono">${stock.fundScore}</span></span>
+          <span>Tech <span class="font-mono">${stock.techScore}</span></span>
+          <span>Sent <span class="font-mono">${stock.sentScore}</span></span>
+        </div>`;
+
+    // Action reasoning tags
+    if (action.reasoning && action.reasoning.length) {
+      html += '<div class="mt-2 flex flex-wrap gap-1">';
+      for (const r of action.reasoning) {
+        html += `<span class="px-1.5 py-0.5 rounded text-[10px] ${isBuy ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}">${r}</span>`;
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  },
+
   renderDashboard() {
     const container = document.getElementById('stages');
     if (!container) return;
 
     container.innerHTML = '';
+
+    // Render executive summary
+    this.renderSummary();
 
     // Update cache status indicator
     const cacheStatus = document.getElementById('cache-status');

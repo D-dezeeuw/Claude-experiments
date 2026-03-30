@@ -82,9 +82,47 @@ const History = {
     }
   },
 
+  /** Fetch daily candles from Twelve Data (800 calls/day, 8/min) */
+  async fetchTwelveData(symbol) {
+    if (!CONFIG.TWELVE_DATA_KEY) return null;
+    try {
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=5000&apikey=${CONFIG.TWELVE_DATA_KEY}`;
+      const res = await fetch(url);
+      const json = await res.json();
+
+      if (json.status === 'error' || !json.values) {
+        console.warn('Twelve Data error for ' + symbol + ':', json.message || json.status);
+        return null;
+      }
+
+      const candles = json.values
+        .map(d => ({
+          date: d.datetime,
+          open: parseFloat(d.open),
+          high: parseFloat(d.high),
+          low: parseFloat(d.low),
+          close: parseFloat(d.close),
+          volume: parseInt(d.volume, 10),
+        }))
+        .reverse(); // Twelve Data returns newest first, we want oldest first
+
+      return {
+        symbol,
+        source: 'twelvedata',
+        _fetched: new Date().toISOString().split('T')[0],
+        _timestamp: new Date().toISOString(),
+        count: candles.length,
+        candles,
+      };
+    } catch (e) {
+      console.error('Twelve Data fetch failed for ' + symbol + ':', e);
+      return null;
+    }
+  },
+
   /**
    * Fetch and cache history for a symbol.
-   * Uses Alpha Vantage (Finnhub free tier doesn't include US candles).
+   * Tries Twelve Data first (800/day), Alpha Vantage as fallback (25/day).
    * Skips if already cached today.
    */
   async fetch(symbol, force) {
@@ -92,7 +130,10 @@ const History = {
       return this.load(symbol);
     }
 
-    const data = await this.fetchAlphaVantage(symbol);
+    let data = await this.fetchTwelveData(symbol);
+    if (!data) {
+      data = await this.fetchAlphaVantage(symbol);
+    }
 
     if (data) {
       this.save(symbol, data);
@@ -116,7 +157,10 @@ const History = {
 
       // Rate limit: Alpha Vantage = 5 calls/min on free tier
       if (i < symbols.length - 1) {
-        await new Promise(r => setTimeout(r, 13000)); // ~13s between calls
+        // Twelve Data: 8 calls/min → 8s between calls
+        // Alpha Vantage: 5 calls/min → 13s between calls
+        const delay = CONFIG.TWELVE_DATA_KEY ? 8000 : 13000;
+        await new Promise(r => setTimeout(r, delay));
       }
     }
     return results;

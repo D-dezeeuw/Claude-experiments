@@ -411,10 +411,14 @@ const GeopoliticalRisk = {
         triggerScore += (threatScores[group]?.weighted || 0);
       }
       if (triggerScore > 3) {
+        // Signal strength: how much news/data is pointing to this scenario
+        // NOT a probability — just how loud the signal is (0-100)
+        const signalStrength = Math.min(100, Math.round(triggerScore * 5));
         active.push({
           name,
           triggerScore: Math.round(triggerScore),
-          probability: Math.min(95, Math.round(triggerScore * 5)),
+          signalStrength,
+          signalLabel: signalStrength > 75 ? 'Very Strong' : signalStrength > 50 ? 'Strong' : signalStrength > 25 ? 'Moderate' : 'Weak',
           impact: scenario.impact,
         });
       }
@@ -582,11 +586,11 @@ const GeopoliticalRisk = {
       html += '<div class="mb-5"><h4 class="text-sm font-semibold mb-3">Active Threat Scenarios</h4>';
       html += '<div class="space-y-2">';
       for (const s of data.activeScenarios) {
-        const probColor = s.probability > 60 ? 'text-red-400' : s.probability > 30 ? 'text-yellow-400' : 'text-gray-400';
+        const sigColor = s.signalStrength > 75 ? 'text-red-400' : s.signalStrength > 50 ? 'text-yellow-400' : 'text-gray-400';
         html += `<div class="p-3 rounded-lg border border-gray-200 dark:border-gray-800">
           <div class="flex items-center justify-between mb-2">
             <span class="font-semibold">${s.name}</span>
-            <span class="${probColor} font-mono text-sm font-bold">${s.probability}% probability</span>
+            <span class="${sigColor} text-sm font-bold">${s.signalLabel} signal <span class="font-mono">(${s.signalStrength}/100)</span></span>
           </div>
           <div class="flex flex-wrap gap-1">`;
         for (const [sector, impact] of Object.entries(s.impact)) {

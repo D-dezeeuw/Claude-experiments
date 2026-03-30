@@ -60,6 +60,7 @@
     <script src="js/tickers.js"></script>
     <script src="js/history.js"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/stages/00-geopolitical.js"></script>
     <script src="js/stages/01-market-pulse.js"></script>
     <script src="js/stages/02-stock-screener.js"></script>
     <script src="js/stages/03-fundamentals.js"></script>
@@ -157,7 +158,7 @@
                 // Render pipeline progress bar
                 document.addEventListener('DOMContentLoaded', () => {
                     const bar = document.querySelector('.mb-8.flex');
-                    const labels = ['Pulse','Screen','Fund.','Tech.','News','Risk','Score','Action'];
+                    const labels = ['Geo','Pulse','Screen','Fund.','Tech.','News','Risk','Score','Action'];
                     labels.forEach((label, i) => {
                         const pip = document.createElement('div');
                         pip.className = 'flex flex-col items-center gap-1 flex-1 min-w-0';

@@ -9,10 +9,11 @@ const DailyScorecard = {
 
   // Weighting for composite score
   weights: {
-    fundamentals: 0.25,
-    technical: 0.30,
-    sentiment: 0.20,
-    risk: 0.25,
+    fundamentals: 0.20,
+    technical: 0.25,
+    sentiment: 0.15,
+    risk: 0.20,
+    geopolitical: 0.20,
   },
 
   async run(ctx) {
@@ -23,6 +24,7 @@ const DailyScorecard = {
     const technicals = ctx.technicals || [];
     const sentiments = ctx.sentiment || [];
     const risks = ctx.risk || [];
+    const geo = ctx.geopolitical || {};
 
     const results = [];
 
@@ -69,12 +71,30 @@ const DailyScorecard = {
       let riskAdjScore = 100 - ((risk.riskScore || 5) * 10);
       riskAdjScore = Math.max(0, Math.min(100, riskAdjScore));
 
+      // Geopolitical score (0-100, inverted: high threat = low score)
+      // Also adjusts per stock based on active scenarios and sector
+      let geoScore = 100 - (geo.threatLevel?.score || 0);
+      // Adjust for sector-specific scenario impacts
+      if (geo.activeScenarios) {
+        for (const scenario of geo.activeScenarios) {
+          for (const [sector, impact] of Object.entries(scenario.impact || {})) {
+            const sectorNorm = (stock.sector || '').toLowerCase().replace(/[^a-z]/g, '');
+            const scenarioSector = sector.toLowerCase().replace(/[^a-z]/g, '');
+            if (sectorNorm.includes(scenarioSector) || scenarioSector.includes(sectorNorm)) {
+              geoScore += impact * 5; // positive impact helps, negative hurts
+            }
+          }
+        }
+      }
+      geoScore = Math.max(0, Math.min(100, geoScore));
+
       // Composite
       const composite = (
         fundScore * this.weights.fundamentals +
         techScore * this.weights.technical +
         sentScore * this.weights.sentiment +
-        riskAdjScore * this.weights.risk
+        riskAdjScore * this.weights.risk +
+        geoScore * this.weights.geopolitical
       );
 
       let verdict = 'Hold';
@@ -87,11 +107,13 @@ const DailyScorecard = {
       results.push({
         symbol: stock.symbol,
         company: stock.company,
+        sector: stock.sector,
         price: stock.price,
         fundScore: Math.round(fundScore),
         techScore: Math.round(techScore),
         sentScore: Math.round(sentScore),
         riskAdjScore: Math.round(riskAdjScore),
+        geoScore: Math.round(geoScore),
         composite: Math.round(composite),
         verdict,
         confidence,
@@ -107,7 +129,7 @@ const DailyScorecard = {
     if (data.error) return `<p class="text-yellow-500">${data.error}</p>`;
 
     let html = `<div class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-      Weights: Fund ${data.weights.fundamentals * 100}% · Tech ${data.weights.technical * 100}% · Sentiment ${data.weights.sentiment * 100}% · Risk ${data.weights.risk * 100}%
+      Weights: Fund ${data.weights.fundamentals * 100}% · Tech ${data.weights.technical * 100}% · Sent ${data.weights.sentiment * 100}% · Risk ${data.weights.risk * 100}% · Geo ${data.weights.geopolitical * 100}%
     </div>`;
 
     html += '<div class="space-y-3">';
@@ -138,11 +160,12 @@ const DailyScorecard = {
         <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2 mb-3">
           <div class="${barColor} h-2 rounded-full transition-all" style="width:${s.composite}%"></div>
         </div>
-        <div class="grid grid-cols-4 gap-2 text-center text-xs">
+        <div class="grid grid-cols-5 gap-2 text-center text-xs">
           <div><div class="text-gray-500 dark:text-gray-400">Fund.</div><div class="font-bold">${s.fundScore}</div></div>
           <div><div class="text-gray-500 dark:text-gray-400">Tech.</div><div class="font-bold">${s.techScore}</div></div>
           <div><div class="text-gray-500 dark:text-gray-400">Sent.</div><div class="font-bold">${s.sentScore}</div></div>
           <div><div class="text-gray-500 dark:text-gray-400">Risk</div><div class="font-bold">${s.riskAdjScore}</div></div>
+          <div><div class="text-gray-500 dark:text-gray-400">Geo</div><div class="font-bold">${s.geoScore}</div></div>
         </div>
         <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Confidence: <span class="font-medium">${s.confidence}</span></div>
       </div>`;

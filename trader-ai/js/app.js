@@ -4,6 +4,7 @@
  */
 
 const STAGES = [
+  GeopoliticalRisk,
   MarketPulse,
   StockScreener,
   FundamentalsCheck,
@@ -226,11 +227,15 @@ const App = {
     const spyData = indices.find(i => i.symbol === 'SPY');
     const marketTrend = spyData ? (spyData.changePercent >= 0 ? 'up' : 'down') : null;
 
+    // Geopolitical data for header
+    const geoData = this.stageResults['geopolitical'];
+    const threatLevel = geoData?.threatLevel || null;
+
     el.classList.remove('hidden');
-    el.innerHTML = this.buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData);
+    el.innerHTML = this.buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData, threatLevel);
   },
 
-  buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData) {
+  buildSummaryHTML(top3, bottom3, actions, risks, marketTrend, spyData, threatLevel) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
@@ -244,6 +249,19 @@ const App = {
       marketLine = `<span class="${color} font-medium">S&P 500 ${arrow} ${up ? '+' : ''}${spyData.changePercent}%</span>`;
     }
 
+    // Threat level badge
+    let threatBadge = '';
+    if (threatLevel) {
+      const tColors = {
+        Green: 'bg-green-500/20 text-green-400',
+        Yellow: 'bg-yellow-500/20 text-yellow-400',
+        Orange: 'bg-orange-500/20 text-orange-400',
+        Red: 'bg-red-500/20 text-red-400',
+      };
+      const tc = tColors[threatLevel.label] || tColors.Green;
+      threatBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${tc}">Threat: ${threatLevel.label} (${threatLevel.score})</span>`;
+    }
+
     let html = `
       <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
         <!-- Header bar -->
@@ -252,7 +270,10 @@ const App = {
             <span class="text-sm font-semibold">Daily Brief</span>
             <span class="text-xs text-gray-500 dark:text-gray-400">${dateStr} · ${timeStr}</span>
           </div>
-          ${marketLine ? '<div class="text-sm">' + marketLine + '</div>' : ''}
+          <div class="flex items-center gap-3 text-sm">
+            ${threatBadge}
+            ${marketLine}
+          </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-0 md:divide-x divide-gray-200 dark:divide-gray-800">

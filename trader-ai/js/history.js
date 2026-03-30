@@ -82,44 +82,9 @@ const History = {
     }
   },
 
-  /** Fetch daily candles from Finnhub (last 2 years, as fallback) */
-  async fetchFinnhub(symbol) {
-    if (!CONFIG.FINNHUB_API_KEY) return null;
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const twoYearsAgo = now - (730 * 86400);
-      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${twoYearsAgo}&to=${now}&token=${CONFIG.FINNHUB_API_KEY}`;
-      const res = await fetch(url);
-      const json = await res.json();
-
-      if (json.s !== 'ok' || !json.c) return null;
-
-      const candles = json.t.map((t, i) => ({
-        date: new Date(t * 1000).toISOString().split('T')[0],
-        open: json.o[i],
-        high: json.h[i],
-        low: json.l[i],
-        close: json.c[i],
-        volume: json.v[i],
-      }));
-
-      return {
-        symbol,
-        source: 'finnhub',
-        _fetched: new Date().toISOString().split('T')[0],
-        _timestamp: new Date().toISOString(),
-        count: candles.length,
-        candles,
-      };
-    } catch (e) {
-      console.error('Finnhub candle fetch failed for ' + symbol + ':', e);
-      return null;
-    }
-  },
-
   /**
    * Fetch and cache history for a symbol.
-   * Uses Alpha Vantage first, Finnhub as fallback.
+   * Uses Alpha Vantage (Finnhub free tier doesn't include US candles).
    * Skips if already cached today.
    */
   async fetch(symbol, force) {
@@ -127,10 +92,7 @@ const History = {
       return this.load(symbol);
     }
 
-    let data = await this.fetchAlphaVantage(symbol);
-    if (!data) {
-      data = await this.fetchFinnhub(symbol);
-    }
+    const data = await this.fetchAlphaVantage(symbol);
 
     if (data) {
       this.save(symbol, data);

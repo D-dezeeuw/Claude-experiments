@@ -23,72 +23,23 @@ const TechnicalAnalysis = {
   },
 
   async fetchTechnicals(symbol) {
-    // Try cached historical data first (much richer, no API call needed)
+    // Use cached historical data (from Alpha Vantage via History module)
     const hist = typeof History !== 'undefined' ? History.load(symbol) : null;
     if (hist && hist.candles && hist.candles.length >= 50) {
       return this.calcFromHistory(hist);
     }
 
-    if (!CONFIG.FINNHUB_API_KEY) return this.mockTechnicals(symbol);
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const monthAgo = now - 30 * 86400;
-      const res = await fetch(
-        `https://finnhub.io/api/v1/indicator?symbol=${symbol}&resolution=D&from=${monthAgo}&to=${now}&indicator=rsi&timeperiod=14&token=${CONFIG.FINNHUB_API_KEY}`
-      );
-      const d = await res.json();
-      const rsi = d.rsi ? d.rsi[d.rsi.length - 1] : null;
-
-      // Fetch candles for MA calculations
-      const candleRes = await fetch(
-        `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${now - 200 * 86400}&to=${now}&token=${CONFIG.FINNHUB_API_KEY}`
-      );
-      const candles = await candleRes.json();
-
-      if (candles.s !== 'ok') return this.mockTechnicals(symbol);
-
-      const closes = candles.c;
-      const volumes = candles.v;
-      const ma20 = this.calcMA(closes, 20);
-      const ma50 = this.calcMA(closes, 50);
-      const ma200 = this.calcMA(closes, 200);
-      const currentPrice = closes[closes.length - 1];
-      const avgVolume = this.calcMA(volumes, 20);
-      const currentVolume = volumes[volumes.length - 1];
-
-      // Simple support/resistance from recent highs/lows
-      const recent30 = candles.h.slice(-30);
-      const recent30Low = candles.l.slice(-30);
-      const resistance = Math.max(...recent30);
-      const support = Math.min(...recent30Low);
-
-      // MACD simplified (12 EMA - 26 EMA)
-      const ema12 = this.calcEMA(closes, 12);
-      const ema26 = this.calcEMA(closes, 26);
-      const macd = ema12 - ema26;
-
-      // Signal
-      let signal = 'Neutral';
-      if (currentPrice > ma50 && rsi < 70 && macd > 0) signal = 'Bullish';
-      if (currentPrice < ma50 && rsi > 30 && macd < 0) signal = 'Bearish';
-      if (rsi > 70) signal = 'Overbought';
-      if (rsi < 30) signal = 'Oversold';
-
-      return {
-        rsi: +rsi?.toFixed(1),
-        ma20: +ma20.toFixed(2),
-        ma50: +ma50.toFixed(2),
-        ma200: ma200 ? +ma200.toFixed(2) : null,
-        macd: +macd.toFixed(2),
-        support: +support.toFixed(2),
-        resistance: +resistance.toFixed(2),
-        volumeRatio: +(currentVolume / avgVolume).toFixed(2),
-        signal,
-      };
-    } catch (e) {
-      console.error(`Technical fetch failed for ${symbol}:`, e);
-      return this.mockTechnicals(symbol);
+    // No cached history — try to fetch it now via Alpha Vantage
+    if (typeof History !== 'undefined' && CONFIG.ALPHA_VANTAGE_KEY) {
+      const freshHist = await History.fetch(symbol, false);
+      if (freshHist && freshHist.candles && freshHist.candles.length >= 50) {
+        return this.calcFromHistory(freshHist);
+      }
     }
+
+    // No history available — use mock with a note to fetch history
+    console.warn(`No price history for ${symbol} — run "Fetch History" for real technicals`);
+    return this.mockTechnicals(symbol);
   },
 
   /** Calculate all technicals from cached historical candle data */

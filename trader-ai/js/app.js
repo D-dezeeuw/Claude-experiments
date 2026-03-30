@@ -209,8 +209,6 @@ const App = {
 
   async init() {
     initSupabase();
-
-    // Priority: Server data (edge functions) > localStorage > Supabase restore
     this.renderDashboard();
 
     // 1. Try loading server-populated data from Supabase
@@ -222,30 +220,28 @@ const App = {
         this.ctx = { ...this.ctx, ...ctx };
         this.renderDashboard();
         console.info('Loaded server-side pipeline data');
-
-        // Run client-side computation stages that the server doesn't produce
-        await this.runMissingStages();
-
-        Cache.save(this.stageResults, this.ctx);
-        this.renderDashboard();
-        this.renderHistoryPanel();
-        // Still restore price history if missing locally
-        await this.autoRestoreHistory();
-        return;
       }
     }
 
-    // 2. Fall back to legacy localStorage cache
-    const cached = Cache.load();
-    if (cached) {
-      this.restoreFromCache(cached);
-      this.renderHistoryPanel();
-      // Still restore price history if missing locally
-      await this.autoRestoreHistory();
-    } else {
-      // 3. Nothing anywhere — try Supabase auto-restore (legacy tables)
-      await this.autoRestoreFromSupabase();
+    // 2. If no server data, try localStorage cache
+    if (!Object.keys(this.stageResults).length) {
+      const cached = Cache.load();
+      if (cached) {
+        this.restoreFromCache(cached);
+      } else if (sbClient) {
+        // 3. Try legacy Supabase tables
+        await this.autoRestoreFromSupabase();
+      }
     }
+
+    // 4. Run any missing stages automatically (fetches data from APIs if needed)
+    await this.runMissingStages();
+
+    // 5. Save and render final state
+    Cache.save(this.stageResults, this.ctx);
+    this.renderDashboard();
+    this.renderHistoryPanel();
+    await this.autoRestoreHistory();
   },
 
   /** Trigger the server-side pipeline and reload data */
@@ -279,23 +275,18 @@ const App = {
     if (btn) { btn.disabled = false; btn.textContent = 'Run Server Pipeline'; btn.classList.remove('opacity-50'); }
   },
 
-  /** Run client-side computation stages that the server pipeline doesn't produce */
+  /** Run any pipeline stages that are missing data, in order */
   async runMissingStages() {
-    const computeStages = [
-      TechnicalAnalysis,
-      RiskAssessment,
-      DailyScorecard,
-      ActionPlan,
-    ];
-    for (const stage of computeStages) {
+    for (const stage of STAGES) {
       if (this.stageResults[stage.id]) continue; // Already have data
       try {
-        console.info('Computing ' + stage.name + '...');
+        console.info('Running ' + stage.name + '...');
         const result = await stage.run(this.ctx);
         this.stageResults[stage.id] = result;
         await saveStageResult(stage.id, result);
+        this.renderDashboard();
       } catch (e) {
-        console.warn('Failed to compute ' + stage.name + ':', e);
+        console.warn('Failed to run ' + stage.name + ':', e);
       }
     }
   },

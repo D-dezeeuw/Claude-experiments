@@ -182,16 +182,65 @@ const App = {
   async init() {
     initSupabase();
 
-    // Try to restore from localStorage first
+    // Priority: Server data (edge functions) > localStorage > Supabase restore
+    this.renderDashboard();
+
+    // 1. Try loading server-populated data from Supabase
+    if (typeof DataClient !== 'undefined' && sbClient) {
+      const serverData = await DataClient.load();
+      if (serverData && Object.keys(serverData.pipeline || {}).length > 0) {
+        const { stageResults, ctx } = DataClient.transformForUI(serverData);
+        this.stageResults = { ...this.stageResults, ...stageResults };
+        this.ctx = { ...this.ctx, ...ctx };
+        // Also save to legacy cache so old code paths still work
+        Cache.save(this.stageResults, this.ctx);
+        this.renderDashboard();
+        this.renderHistoryPanel();
+        console.info('Loaded server-side pipeline data');
+        return;
+      }
+    }
+
+    // 2. Fall back to legacy localStorage cache
     const cached = Cache.load();
     if (cached) {
       this.restoreFromCache(cached);
       this.renderHistoryPanel();
     } else {
-      // Nothing in localStorage — try Supabase auto-restore
-      this.renderDashboard();
+      // 3. Nothing anywhere — try Supabase auto-restore (legacy tables)
       await this.autoRestoreFromSupabase();
     }
+  },
+
+  /** Trigger the server-side pipeline and reload data */
+  async runServerPipeline() {
+    if (typeof DataClient === 'undefined') {
+      alert('DataClient not loaded');
+      return;
+    }
+
+    const btn = document.getElementById('run-server-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Running pipeline...'; btn.classList.add('opacity-50'); }
+
+    const result = await DataClient.triggerPipeline();
+
+    if (result.ok) {
+      // Reload data from Supabase
+      const serverData = await DataClient.load();
+      if (serverData) {
+        const { stageResults, ctx } = DataClient.transformForUI(serverData);
+        this.stageResults = { ...this.stageResults, ...stageResults };
+        this.ctx = { ...this.ctx, ...ctx };
+        Cache.save(this.stageResults, this.ctx);
+        this.renderDashboard();
+        this.renderHistoryPanel();
+      }
+    } else {
+      console.error('Pipeline failed:', result.error);
+      alert('Pipeline failed: ' + (result.error || 'unknown error'));
+    }
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Server Pipeline'; btn.classList.remove('opacity-50'); }
   },
 
   /** Auto-restore stage results and price history from Supabase when localStorage is empty */

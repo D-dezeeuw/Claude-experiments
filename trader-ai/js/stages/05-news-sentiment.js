@@ -152,7 +152,7 @@ const NewsSentiment = {
 
   renderSectorSentiment(sectorSentiment, sectorAnalysis) {
     let html = '<div class="mb-6">';
-    html += '<h4 class="text-sm font-semibold mb-3">Sector Sentiment (Webz.io + AI Analysis)</h4>';
+    html += '<h4 class="text-sm font-semibold mb-3">Sector Sentiment</h4>';
 
     // Market outlook from LLM if available
     if (sectorAnalysis?.marketOutlook) {

@@ -58,6 +58,7 @@
     </script>
     <script src="js/config.js" onerror=""></script>
     <script src="js/tickers.js"></script>
+    <script src="js/history.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/stages/01-market-pulse.js"></script>
     <script src="js/stages/02-stock-screener.js"></script>
@@ -106,6 +107,30 @@
 
         <!-- Executive Summary — top picks at a glance -->
         <div id="executive-summary" class="mb-8 hidden"></div>
+
+        <!-- Historical Data Panel -->
+        <div id="history-panel" class="mb-8 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <h3 class="text-sm font-semibold">Historical Price Data</h3>
+                    <p id="history-status" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Checking cache...</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="App.fetchHistory()" id="fetch-history-btn" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors cursor-pointer">
+                        Fetch History
+                    </button>
+                </div>
+            </div>
+            <div id="history-grid" class="hidden"></div>
+            <div id="history-progress" class="hidden">
+                <div class="flex items-center gap-3">
+                    <div class="flex-1 bg-gray-200 dark:bg-gray-800 rounded-full h-1.5">
+                        <div id="history-progress-bar" class="bg-blue-500 h-1.5 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <span id="history-progress-text" class="text-xs text-gray-500 dark:text-gray-400 min-w-[100px] text-right"></span>
+                </div>
+            </div>
+        </div>
 
         <!-- Pipeline visualization -->
         <div class="mb-8 flex items-center gap-1 overflow-x-auto pb-2">

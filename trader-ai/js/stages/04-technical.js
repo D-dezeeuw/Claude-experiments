@@ -23,6 +23,12 @@ const TechnicalAnalysis = {
   },
 
   async fetchTechnicals(symbol) {
+    // Try cached historical data first (much richer, no API call needed)
+    const hist = typeof History !== 'undefined' ? History.load(symbol) : null;
+    if (hist && hist.candles && hist.candles.length >= 50) {
+      return this.calcFromHistory(hist);
+    }
+
     if (!CONFIG.FINNHUB_API_KEY) return this.mockTechnicals(symbol);
     try {
       const now = Math.floor(Date.now() / 1000);
@@ -83,6 +89,80 @@ const TechnicalAnalysis = {
       console.error(`Technical fetch failed for ${symbol}:`, e);
       return this.mockTechnicals(symbol);
     }
+  },
+
+  /** Calculate all technicals from cached historical candle data */
+  calcFromHistory(hist) {
+    const candles = hist.candles;
+    const closes = candles.map(c => c.close);
+    const volumes = candles.map(c => c.volume);
+    const highs = candles.map(c => c.high);
+    const lows = candles.map(c => c.low);
+
+    const currentPrice = closes[closes.length - 1];
+    const ma20 = this.calcMA(closes, 20);
+    const ma50 = this.calcMA(closes, 50);
+    const ma200 = closes.length >= 200 ? this.calcMA(closes, 200) : null;
+    const avgVolume = this.calcMA(volumes, 20);
+    const currentVolume = volumes[volumes.length - 1];
+
+    // RSI (14-period)
+    const rsi = this.calcRSI(closes, 14);
+
+    // MACD (12 EMA - 26 EMA)
+    const ema12 = this.calcEMA(closes, 12);
+    const ema26 = this.calcEMA(closes, 26);
+    const macd = ema12 - ema26;
+
+    // Support/resistance from last 30 candles
+    const recent30H = highs.slice(-30);
+    const recent30L = lows.slice(-30);
+    const resistance = Math.max(...recent30H);
+    const support = Math.min(...recent30L);
+
+    // Signal
+    let signal = 'Neutral';
+    if (currentPrice > ma50 && rsi < 70 && macd > 0) signal = 'Bullish';
+    if (currentPrice < ma50 && rsi > 30 && macd < 0) signal = 'Bearish';
+    if (rsi > 70) signal = 'Overbought';
+    if (rsi < 30) signal = 'Oversold';
+
+    // Trend data from history
+    const chg7d = closes.length > 7 ? ((currentPrice - closes[closes.length - 8]) / closes[closes.length - 8] * 100) : null;
+    const chg30d = closes.length > 30 ? ((currentPrice - closes[closes.length - 31]) / closes[closes.length - 31] * 100) : null;
+    const chg90d = closes.length > 90 ? ((currentPrice - closes[closes.length - 91]) / closes[closes.length - 91] * 100) : null;
+
+    return {
+      rsi: rsi !== null ? +rsi.toFixed(1) : null,
+      ma20: +ma20.toFixed(2),
+      ma50: +ma50.toFixed(2),
+      ma200: ma200 ? +ma200.toFixed(2) : null,
+      macd: +macd.toFixed(2),
+      support: +support.toFixed(2),
+      resistance: +resistance.toFixed(2),
+      volumeRatio: +(currentVolume / avgVolume).toFixed(2),
+      signal,
+      chg7d: chg7d !== null ? +chg7d.toFixed(2) : null,
+      chg30d: chg30d !== null ? +chg30d.toFixed(2) : null,
+      chg90d: chg90d !== null ? +chg90d.toFixed(2) : null,
+      dataPoints: closes.length,
+      fromHistory: true,
+    };
+  },
+
+  /** Calculate RSI from an array of closes */
+  calcRSI(closes, period) {
+    if (closes.length < period + 1) return null;
+    let gains = 0, losses = 0;
+    for (let i = closes.length - period; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) gains += diff;
+      else losses -= diff;
+    }
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    return 100 - (100 / (1 + (avgGain / avgLoss)));
   },
 
   calcMA(arr, period) {

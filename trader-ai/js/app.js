@@ -188,6 +188,7 @@ const App = {
     } else {
       this.renderDashboard();
     }
+    this.renderHistoryPanel();
   },
 
   restoreFromCache(cached) {
@@ -319,6 +320,12 @@ const App = {
     const riskColors = { Low: 'text-green-400', Medium: 'text-yellow-400', High: 'text-red-400' };
     const riskColor = riskColors[riskLabel] || 'text-gray-400';
 
+    // Sparkline and trend data from history
+    const spark = typeof History !== 'undefined' ? History.sparkline(stock.symbol, 60, 70, 20) : '';
+    const chg7d = typeof History !== 'undefined' ? History.changeOverDays(stock.symbol, 7) : null;
+    const chg30d = typeof History !== 'undefined' ? History.changeOverDays(stock.symbol, 30) : null;
+    const range52 = typeof History !== 'undefined' ? History.week52Range(stock.symbol) : null;
+
     let html = `
       <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
         <div class="flex items-center justify-between mb-2">
@@ -326,12 +333,37 @@ const App = {
             ${tickerLabel(stock.symbol, 'font-bold text-base')}
             <span class="text-xs text-gray-500 dark:text-gray-400">${stock.company || ''}</span>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-3">
+            ${spark ? '<span>' + spark + '</span>' : ''}
             <span class="text-lg font-bold ${scoreColor}">${stock.composite}</span>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${confClass}">${stock.confidence}</span>
           </div>
-        </div>
-        <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1 mb-2">
+        </div>`;
+
+    // Trend row (7d, 30d, 52w range) if history available
+    if (chg7d || chg30d || range52) {
+      html += '<div class="flex items-center gap-3 mb-2 text-[10px]">';
+      if (chg7d) {
+        const c = chg7d.percent >= 0 ? 'text-green-400' : 'text-red-400';
+        html += `<span class="${c} font-mono">7d ${chg7d.percent >= 0 ? '+' : ''}${chg7d.percent.toFixed(1)}%</span>`;
+      }
+      if (chg30d) {
+        const c = chg30d.percent >= 0 ? 'text-green-400' : 'text-red-400';
+        html += `<span class="${c} font-mono">30d ${chg30d.percent >= 0 ? '+' : ''}${chg30d.percent.toFixed(1)}%</span>`;
+      }
+      if (range52) {
+        const pctPos = ((range52.current - range52.low) / (range52.high - range52.low)) * 100;
+        html += `<span class="text-gray-500 flex items-center gap-1">52w
+          <span class="inline-block w-12 bg-gray-300 dark:bg-gray-700 rounded-full h-1 relative">
+            <span class="absolute bg-blue-500 h-1 rounded-full" style="width:${pctPos.toFixed(0)}%"></span>
+          </span>
+          <span class="font-mono">${range52.percentFromHigh.toFixed(0)}%</span>
+        </span>`;
+      }
+      html += '</div>';
+    }
+
+    html += `<div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1 mb-2">
           <div class="${barColor} h-1 rounded-full" style="width:${stock.composite}%"></div>
         </div>
         <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
@@ -517,6 +549,114 @@ const App = {
     this.stageResults = {};
     this.ctx = {};
     this.renderDashboard();
+  },
+
+  /** Render the historical data panel status */
+  renderHistoryPanel() {
+    const statusEl = document.getElementById('history-status');
+    const gridEl = document.getElementById('history-grid');
+    if (!statusEl || !gridEl) return;
+
+    const cached = History.cachedSymbols();
+    if (cached.length === 0) {
+      statusEl.textContent = 'No historical data cached. Run stages first, then fetch history for watchlist stocks.';
+      gridEl.classList.add('hidden');
+      return;
+    }
+
+    statusEl.textContent = cached.length + ' stocks cached with historical daily candles.';
+    gridEl.classList.remove('hidden');
+
+    let html = '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-3">';
+
+    for (const symbol of cached) {
+      const data = History.load(symbol);
+      if (!data) continue;
+
+      const range52 = History.week52Range(symbol);
+      const chg7d = History.changeOverDays(symbol, 7);
+      const chg30d = History.changeOverDays(symbol, 30);
+      const chg90d = History.changeOverDays(symbol, 90);
+      const spark = History.sparkline(symbol, 60, 80, 24);
+
+      const name = tickerName(symbol);
+
+      html += `<div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+        <div class="flex items-center justify-between mb-1">
+          <span class="ticker-tip font-bold text-sm cursor-help border-b border-dotted border-gray-500" data-tip="${name}">${symbol}</span>
+          <span class="text-[10px] text-gray-500">${data.count} days</span>
+        </div>
+        <div class="mb-2">${spark}</div>
+        <div class="flex gap-2 text-[10px]">`;
+
+      if (chg7d) {
+        const c = chg7d.percent >= 0 ? 'text-green-400' : 'text-red-400';
+        html += `<span class="${c}">7d ${chg7d.percent >= 0 ? '+' : ''}${chg7d.percent.toFixed(1)}%</span>`;
+      }
+      if (chg30d) {
+        const c = chg30d.percent >= 0 ? 'text-green-400' : 'text-red-400';
+        html += `<span class="${c}">30d ${chg30d.percent >= 0 ? '+' : ''}${chg30d.percent.toFixed(1)}%</span>`;
+      }
+      if (chg90d) {
+        const c = chg90d.percent >= 0 ? 'text-green-400' : 'text-red-400';
+        html += `<span class="${c}">90d ${chg90d.percent >= 0 ? '+' : ''}${chg90d.percent.toFixed(1)}%</span>`;
+      }
+
+      html += '</div>';
+
+      if (range52) {
+        const pctPos = ((range52.current - range52.low) / (range52.high - range52.low)) * 100;
+        html += `<div class="mt-2">
+          <div class="flex justify-between text-[9px] text-gray-500 mb-0.5">
+            <span>52w L $${range52.low.toFixed(0)}</span>
+            <span>H $${range52.high.toFixed(0)}</span>
+          </div>
+          <div class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-1 relative">
+            <div class="bg-blue-500 h-1 rounded-full" style="width:${pctPos.toFixed(0)}%"></div>
+          </div>
+        </div>`;
+      }
+
+      html += '</div>';
+    }
+
+    html += '</div>';
+    gridEl.innerHTML = html;
+  },
+
+  /** Fetch historical prices for all watchlist stocks */
+  async fetchHistory() {
+    const watchlist = this.ctx.watchlist || [];
+    const symbols = watchlist.map(s => s.symbol);
+
+    if (!symbols.length) {
+      alert('Run the Stock Screener first to build a watchlist, then fetch history.');
+      return;
+    }
+
+    const btn = document.getElementById('fetch-history-btn');
+    const progress = document.getElementById('history-progress');
+    const bar = document.getElementById('history-progress-bar');
+    const text = document.getElementById('history-progress-text');
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Fetching...'; btn.classList.add('opacity-50'); }
+    if (progress) progress.classList.remove('hidden');
+
+    const results = await History.fetchAll(symbols, (symbol, i, total) => {
+      const pct = ((i + 1) / total) * 100;
+      if (bar) bar.style.width = pct + '%';
+      if (text) text.textContent = `${symbol} (${i + 1}/${total})`;
+    });
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Fetch History'; btn.classList.remove('opacity-50'); }
+    if (progress) progress.classList.add('hidden');
+
+    this.renderHistoryPanel();
+    // Re-render summary to include sparklines
+    this.renderSummary();
+
+    const succeeded = results.filter(r => r.success).length;
+    console.info(`History fetch complete: ${succeeded}/${results.length} stocks`);
   },
 };
 

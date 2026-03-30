@@ -323,7 +323,7 @@ const App = {
       <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-2">
-            <span class="font-bold text-base">${stock.symbol}</span>
+            ${tickerLabel(stock.symbol, 'font-bold text-base')}
             <span class="text-xs text-gray-500 dark:text-gray-400">${stock.company || ''}</span>
           </div>
           <div class="flex items-center gap-2">

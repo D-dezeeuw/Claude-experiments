@@ -123,7 +123,7 @@ const MarketPulse = {
       const bg = up ? 'bg-green-500/10' : 'bg-red-500/10';
       html += `
         <div class="rounded-lg border border-gray-200 dark:border-gray-800 p-3 ${bg}">
-          <div class="text-xs text-gray-500 dark:text-gray-400">${idx.symbol}</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">${tickerLabel(idx.symbol)}</div>
           <div class="text-lg font-bold">${idx.price}</div>
           <div class="${color} text-sm font-medium">${up ? '+' : ''}${idx.change} (${up ? '+' : ''}${idx.changePercent}%)</div>
         </div>`;

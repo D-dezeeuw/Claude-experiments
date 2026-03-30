@@ -127,7 +127,7 @@ const DailyScorecard = {
       html += `<div class="p-4 rounded-lg border border-gray-200 dark:border-gray-800">
         <div class="flex items-center justify-between mb-2">
           <div>
-            <span class="font-bold text-lg">${s.symbol}</span>
+            ${tickerLabel(s.symbol, 'font-bold text-lg')}
             <span class="text-gray-500 dark:text-gray-400 ml-2">${s.company}</span>
           </div>
           <div class="flex items-center gap-2">

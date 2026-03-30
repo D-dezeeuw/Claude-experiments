@@ -116,7 +116,7 @@ const NewsSentiment = {
 
       html += `<div class="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-800">`;
       html += `<div class="flex items-center justify-between mb-3">`;
-      html += `<span class="font-bold">${stock.symbol} <span class="font-normal text-gray-500 dark:text-gray-400">— ${stock.company}</span></span>`;
+      html += `<span>${tickerLabel(stock.symbol, 'font-bold')} <span class="font-normal text-gray-500 dark:text-gray-400">— ${stock.company}</span></span>`;
       html += `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${sc}">${stock.sentimentLabel} (${stock.avgSentiment})</span>`;
       html += `</div>`;
 

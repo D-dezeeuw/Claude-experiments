@@ -124,7 +124,7 @@ const RiskAssessment = {
       const rc = riskColors[s.riskLabel];
 
       html += `<tr class="border-b border-gray-100 dark:border-gray-800/50">
-        <td class="py-2 pr-3 font-bold">${s.symbol}</td>
+        <td class="py-2 pr-3">${tickerLabel(s.symbol, 'font-bold')}</td>
         <td class="py-2 pr-3 text-right font-mono">${s.beta}</td>
         <td class="py-2 pr-3 text-right font-mono">${s.stopLoss}</td>
         <td class="py-2 pr-3 text-right font-mono">${s.riskPerShare}</td>

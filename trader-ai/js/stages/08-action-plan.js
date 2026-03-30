@@ -101,7 +101,7 @@ const ActionPlan = {
       html += `<div class="flex items-center justify-between mb-3">`;
       html += `<div class="flex items-center gap-3">`;
       html += `<span class="w-10 h-10 rounded-lg ${s.bg} text-white flex items-center justify-center font-bold text-lg">${s.icon}</span>`;
-      html += `<div><div class="font-bold text-lg">${a.symbol}</div><div class="text-xs text-gray-500 dark:text-gray-400">${a.company}</div></div>`;
+      html += `<div><div>${tickerLabel(a.symbol, 'font-bold text-lg')}</div><div class="text-xs text-gray-500 dark:text-gray-400">${a.company}</div></div>`;
       html += `</div>`;
       html += `<div class="text-right"><div class="text-xl font-bold ${s.text}">${a.action}</div>`;
       html += `<div class="text-xs text-gray-500">Score: ${a.composite} · ${a.confidence} conf.</div></div>`;

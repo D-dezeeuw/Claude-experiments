@@ -136,7 +136,7 @@ const StockScreener = {
       const color = up ? 'text-green-500' : 'text-red-500';
       html += `<tr class="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
         <td class="py-2 pr-3 text-gray-400">${i + 1}</td>
-        <td class="py-2 pr-3 font-bold">${s.symbol}</td>
+        <td class="py-2 pr-3">${tickerLabel(s.symbol, 'font-bold')}</td>
         <td class="py-2 pr-3">${s.company}</td>
         <td class="py-2 pr-3 text-gray-500 dark:text-gray-400">${s.sector}</td>
         <td class="py-2 pr-3 text-right font-mono">${s.price.toFixed(2)}</td>

@@ -47,6 +47,17 @@ const DailyScorecard = {
       if (fund.roe > 20) fundScore += 10;
       if (fund.debtToEquity < 0.5) fundScore += 10;
       else if (fund.debtToEquity > 1.5) fundScore -= 10;
+      // Insider activity
+      if (fund.insiderNetBuying === true) fundScore += 8;
+      else if (fund.insiderNetBuying === false) fundScore -= 5;
+      // Analyst consensus
+      if (fund.analystScore > 70) fundScore += 10;
+      else if (fund.analystScore > 55) fundScore += 5;
+      else if (fund.analystScore < 35) fundScore -= 10;
+      // Earnings consistency
+      if (fund.earningsBeatRate >= 0.75) fundScore += 8;
+      else if (fund.earningsBeatRate >= 0.5) fundScore += 3;
+      else if (fund.earningsBeatRate != null && fund.earningsBeatRate < 0.25) fundScore -= 8;
       fundScore = Math.max(0, Math.min(100, fundScore));
 
       // Technical score (0-100)

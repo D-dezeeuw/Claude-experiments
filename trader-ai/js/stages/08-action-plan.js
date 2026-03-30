@@ -15,9 +15,12 @@ const ActionPlan = {
 
     const actions = [];
 
+    const fundamentals = ctx.fundamentals || [];
+
     for (const stock of scorecard) {
       const risk = risks.find(r => r.symbol === stock.symbol) || {};
       const tech = technicals.find(t => t.symbol === stock.symbol) || {};
+      const fund = fundamentals.find(f => f.symbol === stock.symbol) || {};
       const price = stock.price || 0;
 
       let action = 'HOLD';
@@ -43,6 +46,14 @@ const ActionPlan = {
         action = 'HOLD';
         reasoning.push('Mixed signals, no clear edge');
       }
+
+      // Enrichment reasoning
+      if (fund.insiderNetBuying === true) reasoning.push('Insider buying detected');
+      else if (fund.insiderNetBuying === false && action === 'SELL') reasoning.push('Insider selling detected');
+      if (fund.analystConsensus === 'Strong Buy') reasoning.push('Analyst: Strong Buy');
+      else if (fund.analystConsensus === 'Sell' || fund.analystConsensus === 'Strong Sell') reasoning.push('Analyst: ' + fund.analystConsensus);
+      if (fund.earningsBeatRate >= 0.75) reasoning.push('Consistent earnings beats');
+      else if (fund.earningsBeatRate != null && fund.earningsBeatRate < 0.25) reasoning.push('Earnings misses');
 
       // Targets based on technical levels
       const stopLoss = risk.stopLoss || tech.support || price * 0.95;

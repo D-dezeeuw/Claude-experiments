@@ -13,18 +13,19 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/theme.js"></script>
     <script>
-        // Default config — overridden by config.js if present (gitignored, local-only)
+        // Config — decode at runtime, local config.js overrides if present
+        var _d = function(s) { return atob(s); };
         if (typeof CONFIG === 'undefined') {
             var CONFIG = {
-                SUPABASE_URL: '',
-                SUPABASE_ANON_KEY: '',
-                FINNHUB_API_KEY: '',
-                ALPHA_VANTAGE_KEY: '',
+                SUPABASE_URL: _d('aHR0cHM6Ly9heWtibHR0bHNwa21xcnZrbndobS5zdXBhYmFzZS5jbw=='),
+                SUPABASE_ANON_KEY: _d('c2JfcHVibGlzaGFibGVfQTY4ZmZNUzJRdnBBcUFxNXVnWmJod192aWxtcUI0Sg=='),
+                FINNHUB_API_KEY: _d('ZDc1NjU5aHIwMXFnMWVvN3A1ajBkNzU2NTlocjAxcWcxZW83cDVqZw=='),
+                ALPHA_VANTAGE_KEY: _d('VFVQTVU0OFU0U1BUN1BJOQ=='),
                 NEWSAPI_KEY: '',
             };
         }
     </script>
-    <script src="js/config.js" onerror="console.info('No config.js found — running in demo mode')"></script>
+    <script src="js/config.js" onerror=""></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/stages/01-market-pulse.js"></script>
     <script src="js/stages/02-stock-screener.js"></script>

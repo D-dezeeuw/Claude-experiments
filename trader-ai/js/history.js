@@ -288,4 +288,134 @@ const History = {
       localStorage.removeItem(this._key(symbol));
     }
   },
+
+  // ── Persistence: Supabase + flat file backup ──
+
+  /**
+   * Save all cached history to Supabase (price_history table).
+   * Stores one row per symbol with full candle array as JSONB.
+   */
+  async backupToSupabase() {
+    if (!sbClient) return { saved: 0, error: 'Supabase not connected' };
+    const symbols = this.cachedSymbols();
+    let saved = 0;
+    for (const symbol of symbols) {
+      const data = this.load(symbol);
+      if (!data) continue;
+      const { error } = await sbClient
+        .from('price_history')
+        .upsert({
+          symbol,
+          source: data.source || 'unknown',
+          candle_count: data.count,
+          first_date: data.candles[0]?.date || null,
+          last_date: data.candles[data.candles.length - 1]?.date || null,
+          candles: data.candles,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'symbol' });
+      if (error) {
+        console.error('Supabase backup failed for ' + symbol + ':', error);
+      } else {
+        saved++;
+      }
+    }
+    console.info('Backed up ' + saved + '/' + symbols.length + ' stocks to Supabase');
+    return { saved, total: symbols.length };
+  },
+
+  /**
+   * Restore history from Supabase into localStorage.
+   * Useful when localStorage was cleared or on a new device.
+   */
+  async restoreFromSupabase() {
+    if (!sbClient) return { restored: 0, error: 'Supabase not connected' };
+    const { data, error } = await sbClient
+      .from('price_history')
+      .select('*');
+    if (error) {
+      console.error('Supabase restore failed:', error);
+      return { restored: 0, error: error.message };
+    }
+    let restored = 0;
+    for (const row of (data || [])) {
+      const entry = {
+        symbol: row.symbol,
+        source: row.source,
+        _fetched: row.last_date,
+        _timestamp: row.updated_at,
+        count: row.candle_count,
+        candles: row.candles,
+      };
+      this.save(row.symbol, entry);
+      restored++;
+    }
+    console.info('Restored ' + restored + ' stocks from Supabase');
+    return { restored };
+  },
+
+  /**
+   * Download all cached history as a single JSON flat file.
+   * File contains all symbols with their full candle arrays.
+   */
+  exportFile() {
+    const symbols = this.cachedSymbols();
+    if (!symbols.length) return alert('No historical data to export');
+
+    const payload = {
+      _exported: new Date().toISOString(),
+      _type: 'traderai-price-history',
+      stocks: {},
+    };
+
+    for (const symbol of symbols) {
+      payload.stocks[symbol] = this.load(symbol);
+    }
+
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'traderai-price-history-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Import history from a previously exported JSON file.
+   * Merges into localStorage (does not overwrite newer data).
+   */
+  importFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data._type !== 'traderai-price-history' || !data.stocks) {
+            throw new Error('Not a valid price history file');
+          }
+          let imported = 0;
+          for (const [symbol, entry] of Object.entries(data.stocks)) {
+            if (!entry || !entry.candles) continue;
+            // Only import if we don't have it or ours is older
+            const existing = this.load(symbol);
+            if (!existing || (existing.count || 0) < (entry.count || 0)) {
+              this.save(symbol, entry);
+              imported++;
+            }
+          }
+          alert('Imported ' + imported + ' stock(s) of price history');
+          if (typeof App !== 'undefined') App.renderHistoryPanel();
+        } catch (err) {
+          alert('Import failed: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  },
 };

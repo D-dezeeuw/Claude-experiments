@@ -657,6 +657,13 @@ const App = {
 
     const succeeded = results.filter(r => r.success).length;
     console.info(`History fetch complete: ${succeeded}/${results.length} stocks`);
+
+    // Auto-backup to Supabase after fetching
+    if (sbClient && succeeded > 0) {
+      console.info('Auto-backing up price history to Supabase...');
+      const backup = await History.backupToSupabase();
+      console.info('Supabase backup: ' + backup.saved + ' stocks saved');
+    }
   },
 };
 

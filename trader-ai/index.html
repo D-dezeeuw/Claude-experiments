@@ -116,6 +116,20 @@
                     <p id="history-status" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Checking cache...</p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                        <button onclick="History.backupToSupabase().then(r => alert('Backed up ' + r.saved + ' stocks to Supabase'))" title="Backup to Supabase" class="p-1.5 rounded-lg text-gray-400 hover:text-green-400 hover:bg-gray-800 transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        </button>
+                        <button onclick="History.restoreFromSupabase().then(r => { alert('Restored ' + r.restored + ' stocks from Supabase'); App.renderHistoryPanel(); })" title="Restore from Supabase" class="p-1.5 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/></svg>
+                        </button>
+                        <button onclick="History.exportFile()" title="Download as JSON file" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+                        </button>
+                        <button onclick="History.importFile()" title="Import from JSON file" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5-5 5M12 3v12"/></svg>
+                        </button>
+                    </div>
                     <button onclick="App.fetchHistory()" id="fetch-history-btn" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors cursor-pointer">
                         Fetch History
                     </button>

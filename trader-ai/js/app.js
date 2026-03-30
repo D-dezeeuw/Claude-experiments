@@ -192,11 +192,15 @@ const App = {
         const { stageResults, ctx } = DataClient.transformForUI(serverData);
         this.stageResults = { ...this.stageResults, ...stageResults };
         this.ctx = { ...this.ctx, ...ctx };
-        // Also save to legacy cache so old code paths still work
+        this.renderDashboard();
+        console.info('Loaded server-side pipeline data');
+
+        // Run client-side computation stages that the server doesn't produce
+        await this.runMissingStages();
+
         Cache.save(this.stageResults, this.ctx);
         this.renderDashboard();
         this.renderHistoryPanel();
-        console.info('Loaded server-side pipeline data');
         // Still restore price history if missing locally
         await this.autoRestoreHistory();
         return;
@@ -245,6 +249,27 @@ const App = {
     }
 
     if (btn) { btn.disabled = false; btn.textContent = 'Run Server Pipeline'; btn.classList.remove('opacity-50'); }
+  },
+
+  /** Run client-side computation stages that the server pipeline doesn't produce */
+  async runMissingStages() {
+    const computeStages = [
+      TechnicalAnalysis,
+      RiskAssessment,
+      DailyScorecard,
+      ActionPlan,
+    ];
+    for (const stage of computeStages) {
+      if (this.stageResults[stage.id]) continue; // Already have data
+      try {
+        console.info('Computing ' + stage.name + '...');
+        const result = await stage.run(this.ctx);
+        this.stageResults[stage.id] = result;
+        await saveStageResult(stage.id, result);
+      } catch (e) {
+        console.warn('Failed to compute ' + stage.name + ':', e);
+      }
+    }
   },
 
   /** Auto-restore price history from Supabase if not already cached locally */
@@ -302,11 +327,13 @@ const App = {
         }
         this.stageResults = stageResults;
         this.ctx = ctx;
-        // Save back to localStorage so next reload is instant
-        Cache.save(stageResults, ctx);
         this.renderDashboard();
         restored = true;
         console.info('Auto-restored ' + stageRows.length + ' stage results from Supabase');
+        // Run any missing computation stages
+        await this.runMissingStages();
+        Cache.save(this.stageResults, this.ctx);
+        this.renderDashboard();
       }
     } catch (e) {
       console.warn('Stage results restore from Supabase failed:', e);

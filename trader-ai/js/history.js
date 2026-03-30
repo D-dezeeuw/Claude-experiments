@@ -8,6 +8,8 @@
 const History = {
   PREFIX: 'traderai-prices-',
 
+  MAX_CANDLES: 300, // Keep last 300 trading days (~14 months) to fit localStorage
+
   _key(symbol) {
     return this.PREFIX + symbol;
   },
@@ -23,9 +25,13 @@ const History = {
     }
   },
 
-  /** Save price history for a symbol */
+  /** Save price history for a symbol, trimmed to fit localStorage */
   save(symbol, data) {
     try {
+      // Trim candles to MAX_CANDLES to avoid localStorage quota issues
+      if (data && data.candles && data.candles.length > this.MAX_CANDLES) {
+        data = { ...data, candles: data.candles.slice(-this.MAX_CANDLES), count: this.MAX_CANDLES };
+      }
       localStorage.setItem(this._key(symbol), JSON.stringify(data));
     } catch (e) {
       console.warn('History save failed for ' + symbol + ':', e);

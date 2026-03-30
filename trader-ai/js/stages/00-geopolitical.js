@@ -111,10 +111,13 @@ const GeopoliticalRisk = {
       spilloverWeight: 0.3,
     },
     'Europe': {
-      keywords: ['ecb', 'eurozone', 'brexit', 'eu ', 'european', 'germany', 'france', 'uk economy', 'uk ', 'britain', 'nato', 'european union', 'italy', 'spain', 'netherlands', 'europe', 'eu sanctions', 'eu tariff', 'european central bank'],
-      weight: 1.2,
-      spillover: ['Russia / Eastern Europe'],
-      spilloverWeight: 0.3,
+      // Tighter keywords — removed noisy short matches ('eu ', 'uk ', 'nato', 'european')
+      // Europe heats up mostly via spillover from actual conflict zones
+      keywords: ['ecb', 'eurozone', 'brexit', 'european union', 'eu sanctions', 'eu tariff', 'european central bank', 'eu economy', 'germany economy', 'france economy', 'uk economy', 'britain economy', 'european energy', 'europe energy', 'europe gas', 'nord stream', 'european markets', 'ftse', 'dax', 'stoxx', 'europe inflation', 'europe recession'],
+      weight: 1.0,
+      // Europe gets squeezed by everyone else's conflicts
+      spillover: ['Russia / Eastern Europe', 'Middle East', 'China / Asia'],
+      spilloverWeight: 0.2,
     },
     'China / Asia': {
       keywords: ['china', 'beijing', 'taiwan', 'japan', 'south korea', 'asia', 'chinese economy', 'boj', 'pboc', 'xi jinping', 'chinese military', 'south china sea', 'hong kong', 'semiconductor', 'chip ban', 'asia pacific', 'nikkei', 'shanghai', 'trade deficit china', 'us china'],

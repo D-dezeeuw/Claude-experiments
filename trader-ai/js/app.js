@@ -14,32 +14,67 @@ const STAGES = [
   ActionPlan,
 ];
 
-/** Local flat-file cache via localStorage */
+/** Local flat-file cache via localStorage — one entry per day */
 const Cache = {
-  KEY: 'traderai-cache',
+  PREFIX: 'traderai-cache-',
+  INDEX_KEY: 'traderai-cache-index',
 
-  load() {
+  _today() {
+    return new Date().toISOString().split('T')[0];
+  },
+
+  _key(date) {
+    return this.PREFIX + date;
+  },
+
+  /** Get the index of all cached dates (sorted newest first) */
+  index() {
     try {
-      const raw = localStorage.getItem(this.KEY);
-      if (!raw) return null;
-      const cache = JSON.parse(raw);
-      // Check if cache is from today
-      const today = new Date().toISOString().split('T')[0];
-      if (cache._date !== today) {
-        console.info('Cache is from ' + cache._date + ', today is ' + today + ' — stale, ignoring');
-        return null;
-      }
-      return cache;
+      const raw = localStorage.getItem(this.INDEX_KEY);
+      return raw ? JSON.parse(raw) : [];
     } catch (e) {
-      console.warn('Cache load failed:', e);
+      return [];
+    }
+  },
+
+  _saveIndex(dates) {
+    const unique = [...new Set(dates)].sort().reverse();
+    localStorage.setItem(this.INDEX_KEY, JSON.stringify(unique));
+  },
+
+  /** Load today's cache */
+  load() {
+    return this.loadDate(this._today());
+  },
+
+  /** Load cache for a specific date */
+  loadDate(date) {
+    try {
+      const raw = localStorage.getItem(this._key(date));
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('Cache load failed for ' + date + ':', e);
       return null;
     }
   },
 
+  /** Load all cached days (for graphing/history) */
+  loadAll() {
+    const dates = this.index();
+    const history = [];
+    for (const date of dates) {
+      const entry = this.loadDate(date);
+      if (entry) history.push(entry);
+    }
+    return history;
+  },
+
   save(stageResults, ctx) {
     try {
+      const today = this._today();
       const cache = {
-        _date: new Date().toISOString().split('T')[0],
+        _date: today,
         _timestamp: new Date().toISOString(),
         stageResults: stageResults,
         ctx: {
@@ -51,30 +86,51 @@ const Cache = {
           scorecard: ctx.scorecard || [],
         },
       };
-      localStorage.setItem(this.KEY, JSON.stringify(cache));
+      localStorage.setItem(this._key(today), JSON.stringify(cache));
+
+      // Update index
+      const dates = this.index();
+      if (!dates.includes(today)) {
+        dates.push(today);
+        this._saveIndex(dates);
+      }
     } catch (e) {
       console.warn('Cache save failed:', e);
     }
   },
 
+  /** Clear only today's cache */
   clear() {
-    localStorage.removeItem(this.KEY);
+    const today = this._today();
+    localStorage.removeItem(this._key(today));
+    const dates = this.index().filter(d => d !== today);
+    this._saveIndex(dates);
   },
 
-  /** Download cache as a .json file */
+  /** Clear all history */
+  clearAll() {
+    const dates = this.index();
+    for (const date of dates) {
+      localStorage.removeItem(this._key(date));
+    }
+    localStorage.removeItem(this.INDEX_KEY);
+  },
+
+  /** Export full history as a single .json file */
   export() {
-    const raw = localStorage.getItem(this.KEY);
-    if (!raw) return alert('No cached data to export');
-    const blob = new Blob([raw], { type: 'application/json' });
+    const history = this.loadAll();
+    if (!history.length) return alert('No cached data to export');
+    const payload = { _exported: new Date().toISOString(), days: history };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'traderai-cache-' + new Date().toISOString().split('T')[0] + '.json';
+    a.download = 'traderai-history-' + this._today() + '.json';
     a.click();
     URL.revokeObjectURL(url);
   },
 
-  /** Import cache from a .json file */
+  /** Import history from a .json file */
   import() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -86,9 +142,27 @@ const Cache = {
       reader.onload = (ev) => {
         try {
           const data = JSON.parse(ev.target.result);
-          if (!data._date || !data.stageResults) throw new Error('Invalid cache file');
-          localStorage.setItem(this.KEY, JSON.stringify(data));
-          App.restoreFromCache(data);
+
+          // Support both single-day and multi-day formats
+          const days = data.days || [data];
+          let imported = 0;
+
+          for (const day of days) {
+            if (!day._date || !day.stageResults) continue;
+            localStorage.setItem(this._key(day._date), JSON.stringify(day));
+            const dates = this.index();
+            if (!dates.includes(day._date)) {
+              dates.push(day._date);
+              this._saveIndex(dates);
+            }
+            imported++;
+          }
+
+          // Restore today's data if present
+          const today = this.load();
+          if (today) App.restoreFromCache(today);
+          alert('Imported ' + imported + ' day(s) of data');
+          App.renderDashboard();
         } catch (err) {
           alert('Invalid cache file: ' + err.message);
         }
@@ -133,10 +207,14 @@ const App = {
     const cacheStatus = document.getElementById('cache-status');
     if (cacheStatus) {
       const cached = Cache.load();
+      const totalDays = Cache.index().length;
       if (cached) {
         const time = new Date(cached._timestamp).toLocaleTimeString();
-        cacheStatus.textContent = 'Cached ' + time;
+        cacheStatus.textContent = 'Cached ' + time + ' (' + totalDays + 'd history)';
         cacheStatus.className = 'text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400';
+      } else if (totalDays > 0) {
+        cacheStatus.textContent = totalDays + 'd history (no data today)';
+        cacheStatus.className = 'text-xs px-2 py-1 rounded-full bg-gray-500/20 text-gray-400';
       } else {
         cacheStatus.textContent = 'No cache';
         cacheStatus.className = 'text-xs px-2 py-1 rounded-full bg-gray-500/20 text-gray-400';

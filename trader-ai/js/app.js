@@ -61,6 +61,7 @@ const STAGES = [
   StockScreener,
   FundamentalsCheck,
   TechnicalAnalysis,
+  CorrelationMatrix,
   NewsSentiment,
   RiskAssessment,
   DailyScorecard,

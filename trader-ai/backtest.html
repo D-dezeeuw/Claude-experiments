@@ -37,7 +37,7 @@
     <div class="max-w-5xl mx-auto px-6 py-10">
         <header class="mb-8">
             <h1 class="text-3xl font-bold tracking-tight">Backtester</h1>
-            <p class="mt-1 text-gray-500 dark:text-gray-400">Test trading strategies against historical price data</p>
+            <p class="mt-1 text-gray-500 dark:text-gray-400">Test, validate, and compare trading strategies</p>
         </header>
 
         <!-- Controls -->
@@ -61,26 +61,45 @@
                     </button>
                 </div>
             </div>
-            <!-- Strategy params -->
             <div id="bt-params" class="flex flex-wrap gap-4 text-sm"></div>
             <div id="bt-status" class="mt-3 text-xs text-gray-500 dark:text-gray-400"></div>
         </div>
 
-        <!-- Results -->
-        <div id="bt-results" class="hidden space-y-6">
-            <!-- Metrics -->
-            <div id="bt-metrics" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
-
-            <!-- Equity Curve -->
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h3 class="text-sm font-semibold mb-3">Equity Curve</h3>
-                <div id="bt-chart" class="w-full" style="height:200px"></div>
+        <!-- Scenario Tabs -->
+        <div id="bt-tabs" class="hidden">
+            <div class="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-6">
+                <button onclick="BacktestApp.switchTab('results')" data-tab="results" class="scenario-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-blue-500 text-blue-500">Results</button>
+                <button onclick="BacktestApp.switchTab('validation')" data-tab="validation" class="scenario-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-300">Validation</button>
+                <button onclick="BacktestApp.switchTab('sizing')" data-tab="sizing" class="scenario-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-300">Position Sizing</button>
+                <button onclick="BacktestApp.switchTab('compare')" data-tab="compare" class="scenario-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-300">Strategy Comparison</button>
             </div>
 
-            <!-- Trade Log -->
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h3 class="text-sm font-semibold mb-3">Trade Log</h3>
-                <div id="bt-trades" class="overflow-x-auto"></div>
+            <!-- Tab: Results -->
+            <div id="tab-results" class="scenario-content">
+                <div id="bt-metrics" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"></div>
+                <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+                    <h3 class="text-sm font-semibold mb-3">Equity Curve</h3>
+                    <div id="bt-chart" class="w-full" style="height:200px"></div>
+                </div>
+                <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+                    <h3 class="text-sm font-semibold mb-3">Trade Log</h3>
+                    <div id="bt-trades" class="overflow-x-auto"></div>
+                </div>
+            </div>
+
+            <!-- Tab: Validation -->
+            <div id="tab-validation" class="scenario-content hidden">
+                <div id="bt-validation" class="space-y-6"></div>
+            </div>
+
+            <!-- Tab: Position Sizing -->
+            <div id="tab-sizing" class="scenario-content hidden">
+                <div id="bt-sizing" class="space-y-6"></div>
+            </div>
+
+            <!-- Tab: Strategy Comparison -->
+            <div id="tab-compare" class="scenario-content hidden">
+                <div id="bt-compare" class="space-y-6"></div>
             </div>
         </div>
 

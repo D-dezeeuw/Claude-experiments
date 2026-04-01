@@ -282,11 +282,17 @@ const App = {
         this.ctx = { ...this.ctx, ...ctx };
         this.renderDashboard();
         t.dismiss();
-        Toast.show('Server data loaded', 'success');
+        if (serverData._isStale) {
+          Toast.show('Showing data from ' + serverData._date + ' — pipeline not yet run today', 'info');
+          this._showStaleBanner(serverData._date);
+        } else {
+          Toast.show('Server data loaded', 'success');
+          this._hideStaleBanner();
+        }
       } else {
         t.dismiss();
         if (!Object.keys(this.stageResults).length) {
-          Toast.show('Waiting for pipeline data — run the server pipeline first', 'info');
+          Toast.show('No pipeline data found — trigger a pipeline run', 'error');
         }
       }
     }
@@ -450,6 +456,27 @@ const App = {
     this.ctx = cached.ctx || {};
     this.renderDashboard();
     console.info('Restored from cache (' + cached._timestamp + ')');
+  },
+
+  _showStaleBanner(date) {
+    let el = document.getElementById('stale-data-banner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'stale-data-banner';
+      el.className = 'max-w-5xl mx-auto px-6 mt-2';
+      const nav = document.querySelector('nav');
+      if (nav && nav.nextSibling) nav.parentNode.insertBefore(el, nav.nextSibling);
+      else document.body.prepend(el);
+    }
+    el.innerHTML = `<div class="rounded-lg px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm flex items-center gap-2">
+      <span class="font-semibold">Data from ${date}</span>
+      <span class="text-yellow-500/70">— pipeline has not run yet today. Cron jobs run at 07:00 and 16:00 UTC.</span>
+    </div>`;
+  },
+
+  _hideStaleBanner() {
+    const el = document.getElementById('stale-data-banner');
+    if (el) el.remove();
   },
 
   renderSummary() {

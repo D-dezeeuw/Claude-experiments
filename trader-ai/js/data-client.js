@@ -8,18 +8,35 @@
 const DataClient = {
   CACHE_KEY: 'traderai-server-data',
 
-  /** Load all pipeline data for today from Supabase */
+  /** Load all pipeline data from Supabase — uses the most recent run date available */
   async loadFromServer() {
     if (!sbClient) return null;
 
-    const today = new Date().toISOString().split('T')[0];
-
     try {
-      // Fetch all data in parallel (optimized: only select needed columns)
+      // Find the most recent run date that has pipeline data
+      const latestRes = await sbClient
+        .from('pipeline_data')
+        .select('run_date')
+        .order('run_date', { ascending: false })
+        .limit(1);
+
+      const latestDate = latestRes.data?.[0]?.run_date;
+      if (!latestDate) {
+        console.info('No pipeline data found in Supabase yet');
+        return null;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const isStale = latestDate !== today;
+      if (isStale) {
+        console.warn('No pipeline data for today (' + today + ') — loading most recent run: ' + latestDate);
+      }
+
+      // Fetch all data in parallel for the most recent run date
       const [pipelineRes, stocksRes, newsRes, historyRes] = await Promise.all([
-        sbClient.from('pipeline_data').select('stage,data').eq('run_date', today),
-        sbClient.from('stock_data').select('symbol,company,sector,data').eq('run_date', today),
-        sbClient.from('news_articles').select('symbol,category,sector,headline,source,summary,published_at,sentiment_score').eq('run_date', today).order('published_at', { ascending: false }).limit(200),
+        sbClient.from('pipeline_data').select('stage,data').eq('run_date', latestDate),
+        sbClient.from('stock_data').select('symbol,company,sector,data').eq('run_date', latestDate),
+        sbClient.from('news_articles').select('symbol,category,sector,headline,source,summary,published_at,sentiment_score').eq('run_date', latestDate).order('published_at', { ascending: false }).limit(200),
         sbClient.from('price_history').select('symbol,source,last_date,candle_count,candles'),
       ]);
 
@@ -29,7 +46,8 @@ const DataClient = {
       }
 
       const data = {
-        _date: today,
+        _date: latestDate,
+        _isStale: isStale,
         _timestamp: new Date().toISOString(),
         _source: 'supabase',
         pipeline,
@@ -80,7 +98,8 @@ const DataClient = {
     // Try server first
     const serverData = await this.loadFromServer();
     if (serverData && Object.keys(serverData.pipeline).length > 0) {
-      console.info('Loaded fresh data from Supabase');
+      const label = serverData._isStale ? 'stale data from ' + serverData._date : 'fresh data';
+      console.info('Loaded ' + label + ' from Supabase');
       return serverData;
     }
 

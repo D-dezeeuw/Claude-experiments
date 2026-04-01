@@ -596,12 +596,17 @@ const App = {
     const chg30d = typeof History !== 'undefined' ? History.changeOverDays(stock.symbol, 30) : null;
     const range52 = typeof History !== 'undefined' ? History.week52Range(stock.symbol) : null;
 
+    // Detect active strategy signals from technicals
+    const tech = (this.ctx.technicals || []).find(t => t.symbol === stock.symbol) || {};
+    const strategyTag = this.detectStrategy(tech, stock);
+
     let html = `
       <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-2">
             ${tickerLabel(stock.symbol, 'font-bold text-base')}
             <span class="text-xs text-gray-500 dark:text-gray-400">${stock.company || ''}</span>
+            ${strategyTag}
           </div>
           <div class="flex items-center gap-3">
             ${spark ? '<span>' + spark + '</span>' : ''}
@@ -670,6 +675,30 @@ const App = {
 
     html += '</div>';
     return html;
+  },
+
+  detectStrategy(tech, stock) {
+    if (!tech || !tech.rsi) return '';
+    const labels = [];
+    // RSI Mean Reversion
+    if (tech.rsi < 30) labels.push({ text: 'RSI Oversold', color: 'bg-green-500/15 text-green-400' });
+    else if (tech.rsi > 70) labels.push({ text: 'RSI Overbought', color: 'bg-red-500/15 text-red-400' });
+    // MA Crossover
+    if (tech.ma20 && tech.ma50) {
+      if (tech.ma20 > tech.ma50 && tech.signal === 'Bullish') labels.push({ text: 'MA Cross Up', color: 'bg-green-500/15 text-green-400' });
+      else if (tech.ma20 < tech.ma50 && tech.signal === 'Bearish') labels.push({ text: 'MA Cross Down', color: 'bg-red-500/15 text-red-400' });
+    }
+    // Bollinger Bounce
+    if (tech.bollinger) {
+      if (tech.bollinger.percentB < 0.1) labels.push({ text: 'BB Bounce', color: 'bg-blue-500/15 text-blue-400' });
+      if (tech.bollinger.bandwidth < 0.05) labels.push({ text: 'BB Squeeze', color: 'bg-yellow-500/15 text-yellow-400' });
+    }
+    // Stochastic
+    if (tech.stochastic && tech.stochastic.k < 20 && tech.stochastic.k > tech.stochastic.d) {
+      labels.push({ text: 'Stoch Cross', color: 'bg-green-500/15 text-green-400' });
+    }
+    if (!labels.length) return '';
+    return labels.map(l => `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold ${l.color}">${l.text}</span>`).join('');
   },
 
   renderDashboard() {

@@ -294,15 +294,19 @@ const App = {
       }
     }
 
-    // 4. Run any missing stages automatically (fetches data from APIs if needed)
-    await this.runMissingStages();
+    // 4. Run compute-only stages (no API calls — pure math on existing data)
+    await this.runComputeStages();
 
     // 5. Save and render final state
     Cache.save(this.stageResults, this.ctx);
     this.renderDashboard();
     this.renderHistoryPanel();
     await this.autoRestoreHistory();
-    Toast.show('Dashboard ready', 'success');
+    if (Object.keys(this.stageResults).length > 0) {
+      Toast.show('Dashboard ready', 'success');
+    } else {
+      Toast.show('Waiting for pipeline data — run the server pipeline first', 'info');
+    }
   },
 
   /** Trigger the server-side pipeline and reload data */
@@ -336,22 +340,29 @@ const App = {
     if (btn) { btn.disabled = false; btn.textContent = 'Run Server Pipeline'; btn.classList.remove('opacity-50'); }
   },
 
-  /** Run any pipeline stages that are missing data, in order */
-  async runMissingStages() {
-    const missing = STAGES.filter(s => !this.stageResults[s.id]);
-    if (!missing.length) return;
+  // Stages that only compute from existing data (no external API calls)
+  COMPUTE_STAGES: ['technical', 'correlation', 'risk', 'scorecard', 'action-plan'],
 
-    const t = Toast.persist('Running ' + missing[0].name + '...');
-    for (let i = 0; i < missing.length; i++) {
-      const stage = missing[i];
-      t.update('Running ' + stage.name + ' (' + (i + 1) + '/' + missing.length + ')...');
+  /** Run compute-only stages that don't call external APIs.
+   *  Data-fetching stages (geopolitical, market-pulse, stock-screener,
+   *  fundamentals, news-sentiment) must come from the server pipeline. */
+  async runComputeStages() {
+    if (!this.ctx.watchlist || !this.ctx.watchlist.length) return; // need server data first
+
+    const toRun = STAGES.filter(s => this.COMPUTE_STAGES.includes(s.id) && !this.stageResults[s.id]);
+    if (!toRun.length) return;
+
+    const t = Toast.persist('Computing ' + toRun[0].name + '...');
+    for (let i = 0; i < toRun.length; i++) {
+      const stage = toRun[i];
+      t.update('Computing ' + stage.name + ' (' + (i + 1) + '/' + toRun.length + ')...');
       try {
         const result = await stage.run(this.ctx);
         this.stageResults[stage.id] = result;
         await saveStageResult(stage.id, result);
         this.renderDashboard();
       } catch (e) {
-        console.warn('Failed to run ' + stage.name + ':', e);
+        console.warn('Failed to compute ' + stage.name + ':', e);
       }
     }
     t.dismiss();

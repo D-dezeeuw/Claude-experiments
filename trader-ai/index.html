@@ -45,15 +45,16 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/theme.js"></script>
     <script>
-        // Config — decode at runtime, local config.js overrides if present
+        // Config — client only needs Supabase credentials.
+        // All API keys (Finnhub, Alpha Vantage, etc.) are server-side only.
         var _d = function(s) { return atob(s); };
         if (typeof CONFIG === 'undefined') {
             var CONFIG = {
                 SUPABASE_URL: _d('aHR0cHM6Ly9heWtibHR0bHNwa21xcnZrbndobS5zdXBhYmFzZS5jbw=='),
                 SUPABASE_ANON_KEY: _d('ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1GNWEySnNkSFJzYzNCcmJYRnlkbXR1ZDJodElpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzTnpRNE5qa3lNREFzSW1WNGNDSTZNakE1TURRME5USXdNSDAuSEEtRHhXTV9Dc0g0SHpCRVdualVNQzhXaDBCUU1SWWI5XzNXV1pzSTlMWQ=='),
-                FINNHUB_API_KEY: _d('ZDc1NjU5aHIwMXFnMWVvN3A1ajBkNzU2NTlocjAxcWcxZW83cDVqZw=='),
-                ALPHA_VANTAGE_KEY: _d('VFVQTVU0OFU0U1BUN1BJOQ=='),
-                TWELVE_DATA_KEY: _d('OTllNDI2ODQzMmEwNGRjOGI2NDBjZDU5YzlkNzQ1ZmM='),
+                FINNHUB_API_KEY: '',
+                ALPHA_VANTAGE_KEY: '',
+                TWELVE_DATA_KEY: '',
                 NEWSAPI_KEY: '',
             };
         }
@@ -126,15 +127,12 @@
     </div>
 
     <script>
-        // Update API status indicator
+        // Update API status indicator (client reads from Supabase only)
         document.addEventListener('DOMContentLoaded', () => {
             const el = document.getElementById('api-status');
-            if (CONFIG.FINNHUB_API_KEY && CONFIG.SUPABASE_URL) {
-                el.textContent = 'Live';
+            if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY) {
+                el.textContent = 'Connected';
                 el.className = 'text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400';
-            } else if (CONFIG.FINNHUB_API_KEY || CONFIG.SUPABASE_URL) {
-                el.textContent = 'Partial';
-                el.className = 'text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400';
             }
         });
     </script>

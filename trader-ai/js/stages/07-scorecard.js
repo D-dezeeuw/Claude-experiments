@@ -94,6 +94,18 @@ const DailyScorecard = {
       if (tech.macd > 0) techScore += 10;
       else if (tech.macd != null) techScore -= 10;
       if (tech.volumeRatio > 1.3) techScore += 5;
+      // Bollinger Bands
+      if (tech.bollinger) {
+        if (tech.bollinger.percentB < 0.2) techScore += 5;      // near lower band = oversold
+        else if (tech.bollinger.percentB > 0.8) techScore -= 5;  // near upper band = overbought
+        if (tech.bollinger.bandwidth < 0.05) techScore += 3;     // squeeze = breakout imminent
+      }
+      // Stochastic
+      if (tech.stochastic) {
+        if (tech.stochastic.k < 20) techScore += 5;              // oversold
+        else if (tech.stochastic.k > 80) techScore -= 5;         // overbought
+        if (tech.stochastic.k > tech.stochastic.d && tech.stochastic.k < 50) techScore += 3; // bullish crossover from low
+      }
       techScore = Math.max(0, Math.min(100, techScore));
 
       // ══════════════════════════════════════════
@@ -259,6 +271,12 @@ const DailyScorecard = {
             }
           }
         }
+      }
+      // ATR-based volatility
+      if (tech.atr && stock.price) {
+        const atrPct = tech.atr / stock.price * 100;
+        if (atrPct > 3) riskRating += 8;
+        else if (atrPct < 1) riskRating -= 5;
       }
       riskRating = Math.max(0, Math.min(100, riskRating));
 

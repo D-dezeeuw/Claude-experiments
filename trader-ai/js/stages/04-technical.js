@@ -78,6 +78,47 @@ const TechnicalAnalysis = {
     if (rsi > 70) signal = 'Overbought';
     if (rsi < 30) signal = 'Oversold';
 
+    // Bollinger Bands (20-period, 2 std dev)
+    let bollinger = null;
+    if (closes.length >= 20) {
+      const bbSlice = closes.slice(-20);
+      const bbMid = bbSlice.reduce((a, b) => a + b, 0) / 20;
+      const bbVar = bbSlice.reduce((s, c) => s + (c - bbMid) ** 2, 0) / 20;
+      const bbStd = Math.sqrt(bbVar);
+      const bbUpper = bbMid + 2 * bbStd;
+      const bbLower = bbMid - 2 * bbStd;
+      bollinger = {
+        upper: +bbUpper.toFixed(2), middle: +bbMid.toFixed(2), lower: +bbLower.toFixed(2),
+        bandwidth: bbMid > 0 ? +((bbUpper - bbLower) / bbMid).toFixed(4) : 0,
+        percentB: (bbUpper - bbLower) > 0 ? +((currentPrice - bbLower) / (bbUpper - bbLower)).toFixed(2) : 0.5,
+      };
+    }
+
+    // Stochastic Oscillator (%K 14-period, %D 3-period SMA of %K)
+    let stochastic = null;
+    if (candles.length >= 17) {
+      const kValues = [];
+      for (let i = candles.length - 3; i < candles.length; i++) {
+        const window = candles.slice(i - 13, i + 1);
+        const loLow = Math.min(...window.map(c => c.low));
+        const hiHigh = Math.max(...window.map(c => c.high));
+        const range = hiHigh - loLow;
+        kValues.push(range > 0 ? ((window[window.length - 1].close - loLow) / range) * 100 : 50);
+      }
+      stochastic = { k: +kValues[kValues.length - 1].toFixed(1), d: +(kValues.reduce((a, b) => a + b, 0) / kValues.length).toFixed(1) };
+    }
+
+    // ATR (14-period)
+    let atr = null;
+    if (candles.length >= 15) {
+      const atrSlice = candles.slice(-15);
+      let trSum = 0;
+      for (let i = 1; i < atrSlice.length; i++) {
+        trSum += Math.max(atrSlice[i].high - atrSlice[i].low, Math.abs(atrSlice[i].high - atrSlice[i - 1].close), Math.abs(atrSlice[i].low - atrSlice[i - 1].close));
+      }
+      atr = +(trSum / 14).toFixed(2);
+    }
+
     // Trend data from history
     const chg7d = closes.length > 7 ? ((currentPrice - closes[closes.length - 8]) / closes[closes.length - 8] * 100) : null;
     const chg30d = closes.length > 30 ? ((currentPrice - closes[closes.length - 31]) / closes[closes.length - 31] * 100) : null;
@@ -93,6 +134,9 @@ const TechnicalAnalysis = {
       resistance: +resistance.toFixed(2),
       volumeRatio: +(currentVolume / avgVolume).toFixed(2),
       signal,
+      bollinger,
+      stochastic,
+      atr,
       chg7d: chg7d !== null ? +chg7d.toFixed(2) : null,
       chg30d: chg30d !== null ? +chg30d.toFixed(2) : null,
       chg90d: chg90d !== null ? +chg90d.toFixed(2) : null,
@@ -151,6 +195,9 @@ const TechnicalAnalysis = {
       resistance: +(price * 1.07).toFixed(2),
       volumeRatio: +(0.5 + (seed % 30) / 10).toFixed(2),
       signal,
+      bollinger: { upper: +(price * 1.04).toFixed(2), middle: +(price * 1.0).toFixed(2), lower: +(price * 0.96).toFixed(2), bandwidth: 0.08, percentB: +((seed % 80) / 100 + 0.1).toFixed(2) },
+      stochastic: { k: +(20 + seed % 60).toFixed(1), d: +(25 + seed % 50).toFixed(1) },
+      atr: +(price * 0.015 + (seed % 10) * 0.1).toFixed(2),
       chg7d: +((seed % 10) - 5).toFixed(1),
       chg30d: +((seed % 20) - 10).toFixed(1),
       chg90d: +((seed % 40) - 20).toFixed(1),
@@ -193,6 +240,38 @@ const TechnicalAnalysis = {
     }
 
     html += '</tbody></table></div>';
+
+    // Bollinger / Stochastic / ATR panel
+    const hasAdvanced = data.stocks.some(s => s.bollinger || s.stochastic || s.atr);
+    if (hasAdvanced) {
+      html += '<div class="mt-6"><h4 class="text-sm font-semibold mb-3">Advanced Indicators</h4>';
+      html += '<div class="overflow-x-auto"><table class="w-full text-sm">';
+      html += '<thead><tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">';
+      html += '<th class="pb-2 pr-3">Symbol</th><th class="pb-2 pr-3 text-right">BB Upper</th><th class="pb-2 pr-3 text-right">BB Lower</th><th class="pb-2 pr-3 text-right">%B</th><th class="pb-2 pr-3 text-right">BW</th><th class="pb-2 pr-3 text-right">Stoch %K</th><th class="pb-2 pr-3 text-right">Stoch %D</th><th class="pb-2 text-right">ATR</th></tr></thead><tbody>';
+
+      for (const s of data.stocks) {
+        const bb = s.bollinger || {};
+        const st = s.stochastic || {};
+        const pbColor = bb.percentB > 0.8 ? 'text-red-400' : bb.percentB < 0.2 ? 'text-green-400' : '';
+        const bwColor = bb.bandwidth < 0.05 ? 'text-yellow-400 font-bold' : '';
+        const kColor = st.k > 80 ? 'text-red-400' : st.k < 20 ? 'text-green-400' : '';
+        const atrPct = s.atr && s.price ? (s.atr / s.price * 100) : 0;
+        const atrColor = atrPct > 3 ? 'text-red-400' : atrPct < 1 ? 'text-green-400' : '';
+
+        html += `<tr class="border-b border-gray-100 dark:border-gray-800/50">
+          <td class="py-2 pr-3">${tickerLabel(s.symbol, 'font-bold')}</td>
+          <td class="py-2 pr-3 text-right font-mono">${bb.upper ?? '-'}</td>
+          <td class="py-2 pr-3 text-right font-mono">${bb.lower ?? '-'}</td>
+          <td class="py-2 pr-3 text-right font-mono ${pbColor}">${bb.percentB ?? '-'}</td>
+          <td class="py-2 pr-3 text-right font-mono ${bwColor}">${bb.bandwidth ?? '-'}</td>
+          <td class="py-2 pr-3 text-right font-mono ${kColor}">${st.k ?? '-'}</td>
+          <td class="py-2 pr-3 text-right font-mono">${st.d ?? '-'}</td>
+          <td class="py-2 text-right font-mono ${atrColor}">${s.atr ?? '-'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table></div></div>';
+    }
+
     if (data.stocks[0]?.mock) {
       html += '<p class="mt-4 text-xs text-yellow-500/70 italic">Demo data — add your Finnhub API key in config.js for live data</p>';
     }

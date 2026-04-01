@@ -232,6 +232,61 @@ const History = {
     return 100 - (100 / (1 + rs));
   },
 
+  /** Bollinger Bands: middle (SMA), upper/lower (±2σ), bandwidth, %B */
+  calcBollinger(symbol, period, stdDevMult) {
+    period = period || 20;
+    stdDevMult = stdDevMult || 2;
+    const candles = this.getCandles(symbol);
+    if (candles.length < period) return null;
+    const closes = candles.slice(-period).map(c => c.close);
+    const middle = closes.reduce((a, b) => a + b, 0) / period;
+    const variance = closes.reduce((sum, c) => sum + (c - middle) ** 2, 0) / period;
+    const stdDev = Math.sqrt(variance);
+    const upper = middle + stdDevMult * stdDev;
+    const lower = middle - stdDevMult * stdDev;
+    const current = closes[closes.length - 1];
+    const bandwidth = middle > 0 ? (upper - lower) / middle : 0;
+    const percentB = (upper - lower) > 0 ? (current - lower) / (upper - lower) : 0.5;
+    return { upper: +upper.toFixed(2), middle: +middle.toFixed(2), lower: +lower.toFixed(2), bandwidth: +bandwidth.toFixed(4), percentB: +percentB.toFixed(2) };
+  },
+
+  /** Stochastic Oscillator: %K and %D */
+  calcStochastic(symbol, kPeriod, dPeriod) {
+    kPeriod = kPeriod || 14;
+    dPeriod = dPeriod || 3;
+    const candles = this.getCandles(symbol);
+    if (candles.length < kPeriod + dPeriod) return null;
+    // Compute %K for last dPeriod days to get %D
+    const kValues = [];
+    for (let i = candles.length - dPeriod; i < candles.length; i++) {
+      const window = candles.slice(i - kPeriod + 1, i + 1);
+      const lowestLow = Math.min(...window.map(c => c.low));
+      const highestHigh = Math.max(...window.map(c => c.high));
+      const range = highestHigh - lowestLow;
+      kValues.push(range > 0 ? ((window[window.length - 1].close - lowestLow) / range) * 100 : 50);
+    }
+    const k = kValues[kValues.length - 1];
+    const d = kValues.reduce((a, b) => a + b, 0) / kValues.length;
+    return { k: +k.toFixed(1), d: +d.toFixed(1) };
+  },
+
+  /** Average True Range (ATR) */
+  calcATR(symbol, period) {
+    period = period || 14;
+    const candles = this.getCandles(symbol);
+    if (candles.length < period + 1) return null;
+    const recent = candles.slice(-(period + 1));
+    let trSum = 0;
+    for (let i = 1; i < recent.length; i++) {
+      const high = recent[i].high;
+      const low = recent[i].low;
+      const prevClose = recent[i - 1].close;
+      const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+      trSum += tr;
+    }
+    return +(trSum / period).toFixed(2);
+  },
+
   /** Price change over N days */
   changeOverDays(symbol, days) {
     const candles = this.getCandles(symbol, days + 1);

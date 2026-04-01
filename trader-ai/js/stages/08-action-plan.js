@@ -79,6 +79,12 @@ const ActionPlan = {
         }
       }
 
+      // Technical indicator signals
+      if (tech.bollinger && tech.bollinger.bandwidth < 0.05) reasoning.push('Bollinger squeeze');
+      if (tech.stochastic && tech.stochastic.k < 20) reasoning.push('Stochastic oversold');
+      else if (tech.stochastic && tech.stochastic.k > 80) reasoning.push('Stochastic overbought');
+      if (tech.atr && price > 0 && (tech.atr / price * 100) > 3) reasoning.push('High ATR volatility');
+
       // Targets based on technical levels
       const stopLoss = risk.stopLoss || tech.support || price * 0.95;
       const resistance = tech.resistance || price * 1.08;

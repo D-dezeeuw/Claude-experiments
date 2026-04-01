@@ -264,7 +264,15 @@ const App = {
     initSupabase();
     this.renderDashboard();
 
-    // 1. Try loading server-populated data from Supabase
+    // 1. Try localStorage cache first (instant, zero network)
+    const cached = Cache.load();
+    if (cached) {
+      this.restoreFromCache(cached);
+      this.renderDashboard();
+      Toast.show('Restored from cache', 'success');
+    }
+
+    // 2. Try loading server data from Supabase (single bundled request)
     if (typeof DataClient !== 'undefined' && sbClient) {
       const t = Toast.persist('Loading data from Supabase...');
       const serverData = await DataClient.load();
@@ -277,35 +285,21 @@ const App = {
         Toast.show('Server data loaded', 'success');
       } else {
         t.dismiss();
+        if (!Object.keys(this.stageResults).length) {
+          Toast.show('Waiting for pipeline data — run the server pipeline first', 'info');
+        }
       }
     }
 
-    // 2. If no server data, try localStorage cache
-    if (!Object.keys(this.stageResults).length) {
-      const cached = Cache.load();
-      if (cached) {
-        this.restoreFromCache(cached);
-        Toast.show('Restored from cache', 'success');
-      } else if (sbClient) {
-        // 3. Try legacy Supabase tables
-        const t = Toast.persist('Restoring from Supabase...');
-        await this.autoRestoreFromSupabase();
-        t.dismiss();
-      }
-    }
-
-    // 4. Run compute-only stages (no API calls — pure math on existing data)
+    // 3. Run compute-only stages (no API calls — pure math on existing data)
     await this.runComputeStages();
 
-    // 5. Save and render final state
+    // 4. Save locally and render final state (single cache write, no Supabase writes)
     Cache.save(this.stageResults, this.ctx);
     this.renderDashboard();
     this.renderHistoryPanel();
-    await this.autoRestoreHistory();
     if (Object.keys(this.stageResults).length > 0) {
       Toast.show('Dashboard ready', 'success');
-    } else {
-      Toast.show('Waiting for pipeline data — run the server pipeline first', 'info');
     }
   },
 
@@ -359,7 +353,6 @@ const App = {
       try {
         const result = await stage.run(this.ctx);
         this.stageResults[stage.id] = result;
-        await saveStageResult(stage.id, result);
         this.renderDashboard();
       } catch (e) {
         console.warn('Failed to compute ' + stage.name + ':', e);

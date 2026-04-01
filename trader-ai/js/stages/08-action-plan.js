@@ -120,8 +120,6 @@ const ActionPlan = {
     const order = { BUY: 0, WATCH: 1, HOLD: 2, SELL: 3 };
     actions.sort((a, b) => (order[a.action] ?? 4) - (order[b.action] ?? 4));
 
-    // Save to Supabase
-    await saveStageResult('action-plan', { date: new Date().toISOString().split('T')[0], actions });
 
     return { actions, date: new Date().toLocaleDateString() };
   },

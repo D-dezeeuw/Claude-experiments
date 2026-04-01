@@ -15,12 +15,12 @@ const DataClient = {
     const today = new Date().toISOString().split('T')[0];
 
     try {
-      // Fetch all data in parallel
+      // Fetch all data in parallel (optimized: only select needed columns)
       const [pipelineRes, stocksRes, newsRes, historyRes] = await Promise.all([
-        sbClient.from('pipeline_data').select('*').eq('run_date', today),
-        sbClient.from('stock_data').select('*').eq('run_date', today),
-        sbClient.from('news_articles').select('*').eq('run_date', today).order('published_at', { ascending: false }),
-        sbClient.from('price_history').select('*'),
+        sbClient.from('pipeline_data').select('stage,data').eq('run_date', today),
+        sbClient.from('stock_data').select('symbol,company,sector,data').eq('run_date', today),
+        sbClient.from('news_articles').select('symbol,category,sector,headline,source,summary,published_at,sentiment_score').eq('run_date', today).order('published_at', { ascending: false }).limit(200),
+        sbClient.from('price_history').select('symbol,source,last_date,candle_count,candles'),
       ]);
 
       const pipeline = {};

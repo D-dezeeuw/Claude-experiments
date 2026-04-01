@@ -112,9 +112,6 @@ const StockScreener = {
 
     // Persist watchlist for downstream stages
     ctx.watchlist = watchlist;
-    if (typeof saveWatchlist === 'function') {
-      await saveWatchlist(watchlist);
-    }
 
     return { watchlist, totalScreened: this.universe.length };
   },

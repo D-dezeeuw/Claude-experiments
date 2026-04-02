@@ -276,8 +276,18 @@ const App = {
     if (typeof DataClient !== 'undefined' && sbClient) {
       const t = Toast.persist('Loading data from Supabase...');
       const serverData = await DataClient.load();
+      if (serverData) {
+        console.info('Supabase data:', {
+          date: serverData._date,
+          pipelineStages: Object.keys(serverData.pipeline || {}),
+          stockCount: (serverData.stocks || []).length,
+          newsCount: (serverData.news || []).length,
+          historyCount: (serverData.history || []).length,
+        });
+      }
       if (serverData && Object.keys(serverData.pipeline || {}).length > 0) {
         const { stageResults, ctx } = DataClient.transformForUI(serverData);
+        console.info('Transformed stages:', Object.keys(stageResults), '| ctx keys:', Object.keys(ctx));
         this.stageResults = { ...this.stageResults, ...stageResults };
         this.ctx = { ...this.ctx, ...ctx };
         this.renderDashboard();
@@ -822,7 +832,12 @@ const App = {
       if (result) {
         const output = document.createElement('div');
         output.className = 'border-t border-gray-200 dark:border-gray-800 pt-4';
-        output.innerHTML = stage.render(result);
+        try {
+          output.innerHTML = stage.render(result);
+        } catch (e) {
+          console.error('Render failed for ' + stage.name + ':', e);
+          output.innerHTML = '<p class="text-sm text-red-400">Render error: ' + e.message + '</p>';
+        }
         content.appendChild(output);
       }
 

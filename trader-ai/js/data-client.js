@@ -134,15 +134,129 @@ const DataClient = {
       stageResults['market-pulse'] = p['market-pulse'];
     }
 
-    // Geopolitical (from analysis)
+    // Geopolitical (from analysis + market-pulse fear gauges)
     if (p['analysis']) {
       const a = p['analysis'];
+      const regionRisk = a.regionRisk || {};
+      const threatScore = a.threatScore?.score || 0;
+
+      // Fear gauges come from market-pulse (fetched by fetch-market-data)
+      const fearGauges = (p['market-pulse']?.fearGauges || []).map(g => ({
+        symbol: g.symbol,
+        name: g.name || g.symbol,
+        etf: g.symbol,
+        category: g.type || 'unknown',
+        price: g.price || 0,
+        change: g.change || 0,
+        changePercent: g.changePercent || 0,
+        high: g.high || 0,
+        low: g.low || 0,
+        prevClose: g.prevClose || 0,
+      }));
+
+      // Compute micro temperature from fear gauges
+      const vix = fearGauges.find(g => g.etf === 'VIXY');
+      const vixPrice = vix?.price || 20;
+      let vixScore = vixPrice >= 40 ? 40 : vixPrice >= 30 ? 30 : vixPrice >= 25 ? 20 : vixPrice >= 20 ? 10 : 0;
+      const gold = fearGauges.find(g => g.etf === 'GLD');
+      const usd = fearGauges.find(g => g.etf === 'UUP');
+      const tlt = fearGauges.find(g => g.etf === 'TLT');
+      let safeHavenScore = 0;
+      if (gold?.changePercent > 0.5) safeHavenScore += 10;
+      if (gold?.changePercent > 1.5) safeHavenScore += 5;
+      if (usd?.changePercent > 0.3) safeHavenScore += 8;
+      if (tlt?.changePercent > 0.5) safeHavenScore += 7;
+      const oil = fearGauges.find(g => g.etf === 'USO');
+      const oilPct = Math.abs(oil?.changePercent || 0);
+      let oilScore = oilPct > 5 ? 15 : oilPct > 3 ? 10 : oilPct > 1.5 ? 5 : 0;
+      const defense = fearGauges.find(g => g.etf === 'ITA');
+      let defenseScore = defense?.changePercent > 2 ? 15 : defense?.changePercent > 1 ? 10 : defense?.changePercent > 0.5 ? 5 : 0;
+      const microTotal = Math.min(100, vixScore + safeHavenScore + oilScore + defenseScore);
+      const microTemp = {
+        score: microTotal,
+        label: microTotal > 60 ? 'Stressed' : microTotal > 35 ? 'Cautious' : microTotal > 15 ? 'Normal' : 'Calm',
+        components: {
+          vix: { score: vixScore, price: vixPrice },
+          safeHaven: { score: safeHavenScore },
+          oil: { score: oilScore, change: oil?.changePercent || 0 },
+          defense: { score: defenseScore, change: defense?.changePercent || 0 },
+        },
+      };
+
+      // Compute macro temperature from region risk
+      const regions = Object.values(regionRisk);
+      const avgRegion = regions.length ? regions.reduce((s, r) => s + (r.score || 0), 0) / regions.length : 0;
+      const maxRegion = regions.length ? Math.max(...regions.map(r => r.score || 0)) : 0;
+      const hotspots = regions.filter(r => r.level === 'Hot').length;
+      let macroScore = avgRegion * 0.3 + maxRegion * 0.3 + hotspots * 10;
+      if (vixPrice > 30) macroScore += 15; else if (vixPrice > 25) macroScore += 8;
+      macroScore = Math.min(100, Math.round(macroScore));
+      const macroTemp = {
+        score: macroScore,
+        label: macroScore > 60 ? 'Critical' : macroScore > 40 ? 'Elevated' : macroScore > 20 ? 'Moderate' : 'Stable',
+        avgRegion: Math.round(avgRegion),
+        maxRegion: Math.round(maxRegion),
+        hotspots,
+      };
+
+      // Build news keyword threat scores from analysis
+      const newsScores = {};
+      const keywordGroups = ['military', 'sanctions', 'political', 'financial', 'health', 'energy', 'cyber', 'climate'];
+      for (const group of keywordGroups) {
+        newsScores[group] = { hits: 0, weighted: 0, matched: [] };
+      }
+      const newsArticles = news.map(n => ({
+        headline: n.headline || '',
+        source: n.source || '',
+        summary: n.summary || '',
+        datetime: n.published_at || '',
+      }));
+      // Quick keyword scan on available news
+      const allText = newsArticles.map(n => (n.headline + ' ' + n.summary).toLowerCase()).join(' ');
+      const kws = {
+        military: { weight: 3, words: ['war','military','missile','attack','invasion','troops','nuclear'] },
+        sanctions: { weight: 2, words: ['sanction','embargo','tariff','trade war','ban'] },
+        political: { weight: 2, words: ['coup','impeach','protest','riot','revolution','martial law'] },
+        financial: { weight: 2.5, words: ['default','bankruptcy','bank run','bailout','crisis','collapse'] },
+        health: { weight: 1.5, words: ['pandemic','epidemic','outbreak','quarantine','lockdown'] },
+        energy: { weight: 2, words: ['oil shock','opec','pipeline','energy crisis','blackout'] },
+        cyber: { weight: 1.5, words: ['cyberattack','hack','ransomware','data breach'] },
+        climate: { weight: 1, words: ['hurricane','earthquake','tsunami','wildfire','flood'] },
+      };
+      let totalNewsThreat = 0;
+      for (const [group, cfg] of Object.entries(kws)) {
+        let hits = 0;
+        const matched = [];
+        for (const word of cfg.words) {
+          const count = (allText.match(new RegExp(word, 'gi')) || []).length;
+          if (count > 0) { hits += count; matched.push({ word, count }); }
+        }
+        const weighted = hits * cfg.weight;
+        newsScores[group] = { hits, weighted, matched };
+        totalNewsThreat += weighted;
+      }
+
+      // Composite threat level
+      const newsPoints = Math.min(50, totalNewsThreat * 2);
+      const tlScore = Math.min(100, Math.round(
+        microTemp.score * 0.35 + macroTemp.score * 0.30 + newsPoints * 0.25
+      ));
+      let tlLabel, tlColor, tlAction;
+      if (tlScore >= 75) { tlLabel = 'Red'; tlColor = 'red'; tlAction = 'Reduce to 25% positions, cash-heavy, defensive only'; }
+      else if (tlScore >= 50) { tlLabel = 'Orange'; tlColor = 'orange'; tlAction = 'Reduce to 50% positions, tighten stops, hedge'; }
+      else if (tlScore >= 25) { tlLabel = 'Yellow'; tlColor = 'yellow'; tlAction = 'Reduce to 75% positions, tighten stops'; }
+      else { tlLabel = 'Green'; tlColor = 'green'; tlAction = 'Normal operations, full position sizes'; }
+
       stageResults['geopolitical'] = {
-        regionRisk: a.regionRisk || {},
-        threatLevel: { score: a.threatScore?.score || 0 },
-        newsThreats: { totalThreat: a.threatScore?.score || 0 },
-        llmAnalysis: a.llm || null,
+        fearGauges,
+        newsThreats: { articles: newsArticles.slice(0, 50), scores: newsScores, totalThreat: totalNewsThreat },
+        regionRisk,
         activeScenarios: [],
+        threatLevel: { score: tlScore, label: tlLabel, color: tlColor, action: tlAction, micro: microTemp.score, macro: macroTemp.score, news: Math.round(newsPoints), scenarios: 0 },
+        microTemp,
+        macroTemp,
+        llmAnalysis: a.llm || null,
+        timestamp: a.analyzedAt || new Date().toISOString(),
       };
       ctx.geopolitical = stageResults['geopolitical'];
     }

@@ -1,7 +1,7 @@
 // supabase/functions/fetch-fundamentals/index.ts
-// Fetches per-stock: quotes, fundamentals, insider transactions,
-// analyst recommendations, earnings estimates.
-// Stores in `stock_data` table.
+// Fetches per-stock: quotes and fundamental metrics.
+// Stores in `stock_data` table incrementally (writes after each batch).
+// Rate-limited to ~60 Finnhub calls/minute (free tier).
 
 import {
   finnhub, today, createSupabaseClient, jsonResponse, corsHeaders,
@@ -9,20 +9,17 @@ import {
 } from '../_shared/config.ts';
 
 async function fetchStockData(symbol: string) {
-  // Run all fetches for this stock in parallel
-  const [quote, metrics, insider, recommendation, earnings] = await Promise.all([
+  // 2 parallel calls per stock: quote + metrics
+  const [quote, metrics] = await Promise.all([
     finnhub(`/quote?symbol=${symbol}`).catch(() => null),
     finnhub(`/stock/metric?symbol=${symbol}&metric=all`).catch(() => null),
-    finnhub(`/stock/insider-transactions?symbol=${symbol}`).catch(() => null),
-    finnhub(`/stock/recommendation?symbol=${symbol}`).catch(() => null),
-    finnhub(`/stock/earnings?symbol=${symbol}&limit=8`).catch(() => null),
   ]);
 
   const m = metrics?.metric || {};
 
   return {
     symbol,
-    // Quote
+    // Quote (live)
     price: quote?.c || null,
     change: quote?.d || null,
     changePercent: quote?.dp || null,
@@ -42,34 +39,10 @@ async function fetchStockData(symbol: string) {
     wk52High: m['52WeekHigh'] || null,
     wk52Low: m['52WeekLow'] || null,
 
-    // Insider transactions (last 10)
-    insiderTransactions: (insider?.data || []).slice(0, 10).map((t: any) => ({
-      name: t.name,
-      share: t.share,
-      change: t.change,
-      transactionDate: t.transactionDate,
-      transactionType: t.transactionCode,
-      value: t.transactionPrice ? Math.round(t.change * t.transactionPrice) : null,
-    })),
-
-    // Analyst recommendations (last 4 months)
-    analystRecommendations: (recommendation || []).slice(0, 4).map((r: any) => ({
-      period: r.period,
-      strongBuy: r.strongBuy,
-      buy: r.buy,
-      hold: r.hold,
-      sell: r.sell,
-      strongSell: r.strongSell,
-    })),
-
-    // Earnings history (last 8 quarters)
-    earningsHistory: (earnings || []).slice(0, 8).map((e: any) => ({
-      period: e.period,
-      actual: e.actual,
-      estimate: e.estimate,
-      surprise: e.surprise,
-      surprisePercent: e.surprisePercent,
-    })),
+    // Enrichment data not fetched in this run (fetched by separate enrichment pass)
+    insiderTransactions: [],
+    analystRecommendations: [],
+    earningsHistory: [],
   };
 }
 
@@ -80,42 +53,57 @@ Deno.serve(async (req) => {
     const sb = await createSupabaseClient();
     const dateStr = today();
 
-    // Fetch in batches of 5 to respect rate limits (60/min)
-    const results: any[] = [];
-    for (let i = 0; i < STOCK_UNIVERSE.length; i += 5) {
-      const batch = STOCK_UNIVERSE.slice(i, i + 5);
-      const batchResults = await Promise.all(
-        batch.map(s => fetchStockData(s.symbol).catch(e => ({
-          symbol: s.symbol, error: e.message,
-        })))
-      );
-      results.push(...batchResults);
+    // Batch 3 stocks × 2 calls = 6 calls, then pause 6s → ≈60 calls/min
+    // Write to stock_data after every batch so partial results are saved on timeout.
+    const BATCH_SIZE = 3;
+    const PAUSE_MS = 6000;
 
-      // Rate limit pause between batches
-      if (i + 5 < STOCK_UNIVERSE.length) {
-        await new Promise(r => setTimeout(r, 5000));
+    let saved = 0;
+    let failed = 0;
+
+    for (let i = 0; i < STOCK_UNIVERSE.length; i += BATCH_SIZE) {
+      const batch = STOCK_UNIVERSE.slice(i, i + BATCH_SIZE);
+
+      const batchData = await Promise.all(
+        batch.map(s =>
+          fetchStockData(s.symbol).catch(e => ({
+            symbol: s.symbol,
+            error: e.message,
+            price: null, change: null, changePercent: null,
+            insiderTransactions: [], analystRecommendations: [], earningsHistory: [],
+          }))
+        )
+      );
+
+      // Upsert this batch immediately — ensures data is saved even if we timeout later
+      for (const stock of batchData) {
+        const meta = STOCK_UNIVERSE.find(s => s.symbol === stock.symbol);
+        const { error } = await sb.from('stock_data').upsert({
+          symbol: stock.symbol,
+          run_date: dateStr,
+          company: meta?.company,
+          sector: meta?.sector,
+          data: stock,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'symbol,run_date' });
+
+        if (error) failed++;
+        else saved++;
+      }
+
+      // Pause between batches to respect Finnhub rate limit
+      if (i + BATCH_SIZE < STOCK_UNIVERSE.length) {
+        await new Promise(r => setTimeout(r, PAUSE_MS));
       }
     }
 
-    // Merge with universe metadata
-    const enriched = results.map(r => {
-      const meta = STOCK_UNIVERSE.find(s => s.symbol === r.symbol);
-      return { ...r, company: meta?.company, sector: meta?.sector };
+    return jsonResponse({
+      ok: true,
+      stage: 'fundamentals',
+      saved,
+      failed,
+      total: STOCK_UNIVERSE.length,
     });
-
-    // Upsert each stock into stock_data
-    for (const stock of enriched) {
-      await sb.from('stock_data').upsert({
-        symbol: stock.symbol,
-        run_date: dateStr,
-        company: stock.company,
-        sector: stock.sector,
-        data: stock,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'symbol,run_date' });
-    }
-
-    return jsonResponse({ ok: true, stage: 'fundamentals', count: enriched.length });
   } catch (e) {
     return jsonResponse({ error: e.message }, 500);
   }

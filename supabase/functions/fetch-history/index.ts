@@ -9,10 +9,10 @@ import {
 } from '../_shared/config.ts';
 
 async function fetchCandles(symbol: string): Promise<any | null> {
-  // Try Twelve Data first
+  // Try Twelve Data first — only fetch 250 candles (1 year, enough for MA200)
   if (TWELVE_DATA_KEY) {
     try {
-      const data = await twelveData(`/time_series?symbol=${symbol}&interval=1day&outputsize=5000`);
+      const data = await twelveData(`/time_series?symbol=${symbol}&interval=1day&outputsize=250`);
       if (data.status !== 'error' && data.values) {
         const candles = data.values
           .map((d: any) => ({
@@ -29,11 +29,11 @@ async function fetchCandles(symbol: string): Promise<any | null> {
     } catch (_) {}
   }
 
-  // Fallback to Alpha Vantage
+  // Fallback to Alpha Vantage (compact = last 100 days, saves memory)
   if (ALPHA_VANTAGE_KEY) {
     try {
       const res = await fetch(
-        `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=full&apikey=${ALPHA_VANTAGE_KEY}`
+        `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${ALPHA_VANTAGE_KEY}`
       );
       const json = await res.json();
       const ts = json['Time Series (Daily)'];

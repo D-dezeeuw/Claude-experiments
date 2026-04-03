@@ -90,8 +90,37 @@ function onAxisChange() {
   updateStarfield(stocks, sel, METRICS);
 }
 
+// ── Cache ──
+const VIZ_CACHE_KEY = 'traderai-viz-cache';
+
+function saveCache(merged) {
+  try {
+    const payload = { _date: new Date().toISOString().split('T')[0], _ts: Date.now(), stocks: merged };
+    localStorage.setItem(VIZ_CACHE_KEY, JSON.stringify(payload));
+  } catch (e) { /* ignore quota errors */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(VIZ_CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    // Cache valid for 2 hours
+    if (Date.now() - data._ts > 2 * 60 * 60 * 1000) return null;
+    return data.stocks;
+  } catch (e) { return null; }
+}
+
 // ── Data Loading ──
 async function loadData() {
+  // 1. Try cache first (instant, no network)
+  const cached = loadCache();
+  if (cached && cached.length > 0) {
+    console.info('3D View: loaded ' + cached.length + ' stocks from cache');
+    return cached;
+  }
+
+  // 2. Fetch from Supabase
   if (typeof initSupabase !== 'undefined') initSupabase();
 
   const serverData = typeof DataClient !== 'undefined' && typeof sbClient !== 'undefined' && sbClient
@@ -155,7 +184,10 @@ async function loadData() {
     };
   });
 
-  console.info('3D View: loaded ' + merged.length + ' stocks (' + scorecard.length + ' with scorecard)');
+  // 3. Cache the result
+  if (merged.length > 0) saveCache(merged);
+
+  console.info('3D View: loaded ' + merged.length + ' stocks from Supabase (' + scorecard.length + ' with scorecard)');
   return merged;
 }
 

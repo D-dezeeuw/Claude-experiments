@@ -1,6 +1,6 @@
 /**
  * TraderAI — 3D Point Cloud (Stars)
- * Renders stocks as glowing stars with labels and hover tooltips.
+ * Renders stocks as glowing stars with labels, hover tooltips, and cluster spread.
  */
 
 import * as THREE from 'three';
@@ -9,11 +9,16 @@ import { SCENE_SIZE, flyTo } from './viz-scene.js';
 
 let pointCloud = null;
 let labelGroup = null;
-let starData = []; // {index, symbol, company, sector, pos, targetPos, stock, labelObj}
+let clusterLines = null;
+let starData = []; // {index, symbol, company, sector, pos, targetPos, basePos, stock, labelObj, labelDiv, _hasData}
 let hoveredIndex = -1;
+let activeCluster = null;
 let raycaster = null;
 let mouse = new THREE.Vector2(-999, -999);
 let animId = null;
+
+const CLUSTER_THRESHOLD = 3; // scene units — points closer than this are clustered
+const SPREAD_RADIUS = 8;     // how far clustered points spread on hover
 
 // ── Color gradient: orange (low) → white (mid) → blue (high) ──
 function valueToColor(t) {
@@ -41,11 +46,36 @@ function computePosition(stock, selections, metrics) {
   );
 }
 
+// ── Detect clusters: groups of points that overlap ──
+function detectClusters() {
+  const clusters = [];
+  const assigned = new Set();
+
+  for (let i = 0; i < starData.length; i++) {
+    if (assigned.has(i)) continue;
+    const group = [i];
+    assigned.add(i);
+
+    for (let j = i + 1; j < starData.length; j++) {
+      if (assigned.has(j)) continue;
+      if (starData[i].basePos.distanceTo(starData[j].basePos) < CLUSTER_THRESHOLD) {
+        group.push(j);
+        assigned.add(j);
+      }
+    }
+
+    if (group.length > 1) {
+      clusters.push(group);
+    }
+  }
+  return clusters;
+}
+
 // ── Build the starfield from stock data ──
 export function buildStarfield(sceneObj, stocks, selections, metrics) {
-  // Clean up previous
   if (pointCloud) sceneObj.scene.remove(pointCloud);
   if (labelGroup) sceneObj.scene.remove(labelGroup);
+  if (clusterLines) sceneObj.scene.remove(clusterLines);
   if (animId) cancelAnimationFrame(animId);
 
   const mc = metrics[selections.color];
@@ -56,6 +86,7 @@ export function buildStarfield(sceneObj, stocks, selections, metrics) {
   const sizes = new Float32Array(count);
   starData = [];
   labelGroup = new THREE.Group();
+  clusterLines = new THREE.Group();
 
   for (let i = 0; i < count; i++) {
     const stock = stocks[i];
@@ -67,15 +98,17 @@ export function buildStarfield(sceneObj, stocks, selections, metrics) {
     positions[i * 3 + 1] = pos.y;
     positions[i * 3 + 2] = pos.z;
 
-    const color = valueToColor(nc);
+    // Dim stars without data
+    const hasData = stock._hasData !== false;
+    const color = hasData ? valueToColor(nc) : new THREE.Color(0x444455);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i] = 3 + ns * 12;
+    sizes[i] = hasData ? (3 + ns * 12) : 2;
 
     // CSS2D label
     const labelDiv = document.createElement('div');
-    labelDiv.className = 'label-2d';
+    labelDiv.className = 'label-2d' + (hasData ? '' : ' no-data');
     labelDiv.textContent = stock.symbol;
     const labelObj = new CSS2DObject(labelDiv);
     labelObj.position.copy(pos).y += 2.5;
@@ -83,7 +116,8 @@ export function buildStarfield(sceneObj, stocks, selections, metrics) {
 
     starData.push({
       index: i, symbol: stock.symbol, company: stock.company,
-      sector: stock.sector, pos: pos.clone(), stock, labelObj, labelDiv,
+      sector: stock.sector, pos: pos.clone(), basePos: pos.clone(),
+      stock, labelObj, labelDiv, _hasData: hasData,
     });
   }
 
@@ -127,12 +161,14 @@ export function buildStarfield(sceneObj, stocks, selections, metrics) {
   pointCloud = new THREE.Points(geometry, material);
   sceneObj.scene.add(pointCloud);
   sceneObj.scene.add(labelGroup);
+  sceneObj.scene.add(clusterLines);
 }
 
 // ── Update starfield when axes change ──
 export function updateStarfield(stocks, selections, metrics) {
   if (!pointCloud || !stocks.length || !starData.length) return;
   if (animId) cancelAnimationFrame(animId);
+  collapseCluster(); // reset any active cluster
 
   const mc = metrics[selections.color];
   const ms = metrics[selections.size];
@@ -143,12 +179,14 @@ export function updateStarfield(stocks, selections, metrics) {
     const stock = stocks[i];
     const target = computePosition(stock, selections, metrics);
     starData[i].targetPos = target;
+    starData[i].basePos = target.clone();
 
+    const hasData = stock._hasData !== false;
     const nc = normalize(stock[mc.key], mc.range);
     const ns = normalize(Math.abs(stock[ms.key] || 0), [0, Math.max(ms.range[1], Math.abs(ms.range[0]))]);
-    const color = valueToColor(nc);
+    const color = hasData ? valueToColor(nc) : new THREE.Color(0x444455);
     colAttr.setXYZ(i, color.r, color.g, color.b);
-    sizeAttr.setX(i, 3 + ns * 12);
+    sizeAttr.setX(i, hasData ? (3 + ns * 12) : 2);
   }
 
   colAttr.needsUpdate = true;
@@ -164,17 +202,13 @@ function animateToTargets() {
   function step() {
     frame++;
     const t = Math.min(1, frame / total);
-    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease-in-out
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
     for (let i = 0; i < starData.length; i++) {
       const sd = starData[i];
       if (!sd.targetPos) continue;
-
-      // Lerp position
       sd.pos.lerp(sd.targetPos, 0.08 + ease * 0.15);
       posAttr.setXYZ(i, sd.pos.x, sd.pos.y, sd.pos.z);
-
-      // Move label with the star
       sd.labelObj.position.set(sd.pos.x, sd.pos.y + 2.5, sd.pos.z);
     }
     posAttr.needsUpdate = true;
@@ -182,7 +216,6 @@ function animateToTargets() {
     if (frame < total) {
       animId = requestAnimationFrame(step);
     } else {
-      // Snap final
       for (const sd of starData) {
         if (sd.targetPos) {
           sd.pos.copy(sd.targetPos);
@@ -195,16 +228,89 @@ function animateToTargets() {
   step();
 }
 
+// ── Cluster spread: when hovering a cluster, spread points outward with lines ──
+function spreadCluster(clusterIndices, centerPos) {
+  collapseCluster(); // collapse any previous
+  activeCluster = clusterIndices;
+
+  const posAttr = pointCloud.geometry.getAttribute('position');
+  const count = clusterIndices.length;
+
+  // Clear old lines
+  while (clusterLines.children.length) clusterLines.remove(clusterLines.children[0]);
+
+  // Arrange in a circle around the center
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const offset = new THREE.Vector3(
+      Math.cos(angle) * SPREAD_RADIUS,
+      Math.sin(angle) * SPREAD_RADIUS * 0.6,
+      Math.sin(angle + Math.PI / 4) * SPREAD_RADIUS * 0.4,
+    );
+    const idx = clusterIndices[i];
+    const sd = starData[idx];
+    const spreadPos = centerPos.clone().add(offset);
+
+    sd.targetPos = spreadPos;
+
+    // Draw line from spread position to origin
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([centerPos, spreadPos]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.3 });
+    clusterLines.add(new THREE.Line(lineGeo, lineMat));
+  }
+
+  // Animate spread
+  let frame = 0;
+  function step() {
+    frame++;
+    const t = Math.min(1, frame / 20);
+    const ease = t * (2 - t);
+
+    for (const idx of clusterIndices) {
+      const sd = starData[idx];
+      if (!sd.targetPos) continue;
+      sd.pos.lerp(sd.targetPos, ease * 0.2);
+      posAttr.setXYZ(idx, sd.pos.x, sd.pos.y, sd.pos.z);
+      sd.labelObj.position.set(sd.pos.x, sd.pos.y + 2.5, sd.pos.z);
+    }
+    posAttr.needsUpdate = true;
+    if (frame < 20) requestAnimationFrame(step);
+  }
+  step();
+}
+
+function collapseCluster() {
+  if (!activeCluster || !pointCloud) return;
+  const posAttr = pointCloud.geometry.getAttribute('position');
+
+  for (const idx of activeCluster) {
+    const sd = starData[idx];
+    sd.pos.copy(sd.basePos);
+    sd.targetPos = null;
+    posAttr.setXYZ(idx, sd.pos.x, sd.pos.y, sd.pos.z);
+    sd.labelObj.position.set(sd.pos.x, sd.pos.y + 2.5, sd.pos.z);
+  }
+  posAttr.needsUpdate = true;
+
+  while (clusterLines.children.length) clusterLines.remove(clusterLines.children[0]);
+  activeCluster = null;
+}
+
 // ── Focus camera on a specific stock ──
 export function focusOnStock(sceneObj, symbol) {
   const sd = starData.find(s => s.symbol === symbol);
   if (!sd) return;
 
-  // Highlight the label
-  for (const s of starData) s.labelDiv.className = 'label-2d';
+  for (const s of starData) s.labelDiv.className = 'label-2d' + (s._hasData ? '' : ' no-data');
   sd.labelDiv.className = 'label-2d hovered';
 
-  // Fly camera to the stock
+  // Check if this stock is in a cluster
+  const clusters = detectClusters();
+  const cluster = clusters.find(c => c.includes(sd.index));
+  if (cluster && cluster.length > 1) {
+    spreadCluster(cluster, sd.basePos.clone());
+  }
+
   flyTo(sceneObj, sd.pos);
 }
 
@@ -226,7 +332,7 @@ export function setupRaycaster(sceneObj, stocks, metrics) {
 
     // Unhover previous
     if (hoveredIndex >= 0 && starData[hoveredIndex]) {
-      starData[hoveredIndex].labelDiv.className = 'label-2d';
+      starData[hoveredIndex].labelDiv.className = 'label-2d' + (starData[hoveredIndex]._hasData ? '' : ' no-data');
     }
 
     if (intersects.length > 0) {
@@ -235,6 +341,15 @@ export function setupRaycaster(sceneObj, stocks, metrics) {
       const sd = starData[idx];
       sd.labelDiv.className = 'label-2d hovered';
 
+      // Check for cluster at this point
+      const clusters = detectClusters();
+      const cluster = clusters.find(c => c.includes(idx));
+
+      if (cluster && cluster.length > 1 && (!activeCluster || !cluster.every(i => activeCluster.includes(i)))) {
+        spreadCluster(cluster, sd.basePos.clone());
+      }
+
+      // Build tooltip — show cluster members if applicable
       const sel = {
         x: document.getElementById('axis-x').value,
         y: document.getElementById('axis-y').value,
@@ -243,15 +358,23 @@ export function setupRaycaster(sceneObj, stocks, metrics) {
         size: document.getElementById('axis-size').value,
       };
 
-      tooltip.innerHTML = `
+      let ttHtml = `
         <div class="tt-symbol">${sd.symbol}</div>
         <div class="tt-company">${sd.company} &middot; ${sd.sector}</div>
         <div class="tt-row"><span class="tt-label">${metrics[sel.x].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.x].key])}</span></div>
         <div class="tt-row"><span class="tt-label">${metrics[sel.y].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.y].key])}</span></div>
         <div class="tt-row"><span class="tt-label">${metrics[sel.z].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.z].key])}</span></div>
         <div class="tt-row"><span class="tt-label">${metrics[sel.color].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.color].key])}</span></div>
-        <div class="tt-row"><span class="tt-label">${metrics[sel.size].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.size].key])}</span></div>
       `;
+
+      if (cluster && cluster.length > 1) {
+        const others = cluster.filter(i => i !== idx).map(i => starData[i].symbol).join(', ');
+        ttHtml += `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(100,116,139,0.3);font-size:10px;color:#94a3b8">
+          Cluster: ${cluster.length} stocks nearby<br>${others}
+        </div>`;
+      }
+
+      tooltip.innerHTML = ttHtml;
       tooltip.style.display = 'block';
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
@@ -260,12 +383,16 @@ export function setupRaycaster(sceneObj, stocks, metrics) {
     } else {
       hoveredIndex = -1;
       tooltip.style.display = 'none';
+
+      // Collapse cluster when mouse moves away
+      if (activeCluster) collapseCluster();
     }
   });
 
   canvas.addEventListener('mouseleave', () => {
     hoveredIndex = -1;
     tooltip.style.display = 'none';
+    if (activeCluster) collapseCluster();
   });
 }
 

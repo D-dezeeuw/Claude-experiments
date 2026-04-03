@@ -105,7 +105,6 @@ function loadCache() {
     const raw = localStorage.getItem(VIZ_CACHE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    // Cache valid for 2 hours
     if (Date.now() - data._ts > 2 * 60 * 60 * 1000) return null;
     return data.stocks;
   } catch (e) { return null; }
@@ -115,7 +114,7 @@ function loadCache() {
 async function loadData() {
   // 1. Try cache first (instant, no network)
   const cached = loadCache();
-  if (cached && cached.length > 0) {
+  if (cached && cached.length >= 40) { // only use cache if it has most stocks
     console.info('3D View: loaded ' + cached.length + ' stocks from cache');
     return cached;
   }
@@ -127,13 +126,12 @@ async function loadData() {
     ? await DataClient.load()
     : null;
 
-  if (!serverData || Object.keys(serverData.pipeline || {}).length === 0) {
-    document.getElementById('loading-overlay').innerHTML =
-      '<span class="text-sm text-red-400">No pipeline data available. Run the pipeline first.</span>';
-    return [];
+  let stageResults = {}, ctx = {};
+  if (serverData && Object.keys(serverData.pipeline || {}).length > 0) {
+    const transformed = DataClient.transformForUI(serverData);
+    stageResults = transformed.stageResults;
+    ctx = transformed.ctx;
   }
-
-  const { stageResults, ctx } = DataClient.transformForUI(serverData);
 
   // Run compute stages to get scorecard
   const COMPUTE_STAGES = [
@@ -159,35 +157,35 @@ async function loadData() {
     }
   }
 
-  // Start from ALL stocks — use fundamentals (all 49), not scorecard (limited to watchlist)
   const fundamentals = stageResults['fundamentals']?.stocks || ctx.fundamentals || [];
   const scorecard = stageResults['scorecard']?.stocks || ctx.scorecard || [];
   const technicals = stageResults['technical']?.stocks || ctx.technicals || [];
 
-  // If no fundamentals data, fall back to the full stock universe
-  let allStocks = fundamentals;
-  if (allStocks.length === 0 && typeof StockScreener !== 'undefined') {
-    allStocks = StockScreener.universe.map(s => ({ symbol: s.symbol, company: s.company, sector: s.sector }));
-  }
+  // ALWAYS start from the full universe (49 stocks), merge available data in
+  const universe = typeof StockScreener !== 'undefined'
+    ? StockScreener.universe
+    : [];
 
-  const merged = allStocks.map(fund => {
-    const sc = scorecard.find(s => s.symbol === fund.symbol) || {};
-    const tech = technicals.find(t => t.symbol === fund.symbol) || {};
-    const name = typeof TICKERS !== 'undefined' ? (TICKERS[fund.symbol] || fund.company || fund.symbol) : fund.symbol;
+  const merged = universe.map(base => {
+    const fund = fundamentals.find(f => f.symbol === base.symbol) || {};
+    const sc = scorecard.find(s => s.symbol === base.symbol) || {};
+    const tech = technicals.find(t => t.symbol === base.symbol) || {};
+    const name = typeof TICKERS !== 'undefined' ? (TICKERS[base.symbol] || base.company || base.symbol) : base.symbol;
     return {
-      symbol: fund.symbol,
+      symbol: base.symbol,
       company: name,
-      sector: fund.sector || '',
+      sector: base.sector,
+      _hasData: Object.keys(fund).length > 2 || Object.keys(sc).length > 0,
       ...fund,
       ...tech,
       ...sc,
     };
   });
 
-  // 3. Cache the result
   if (merged.length > 0) saveCache(merged);
 
-  console.info('3D View: loaded ' + merged.length + ' stocks from Supabase (' + scorecard.length + ' with scorecard)');
+  const withData = merged.filter(s => s._hasData).length;
+  console.info('3D View: ' + merged.length + ' stocks (' + withData + ' with data, ' + (merged.length - withData) + ' no data)');
   return merged;
 }
 
@@ -196,7 +194,6 @@ function buildStockList(stocks) {
   const container = document.getElementById('stock-list');
   if (!container) return;
 
-  // Group by sector
   const bySector = {};
   for (const s of stocks) {
     const sector = s.sector || 'Unknown';
@@ -220,10 +217,11 @@ function buildStockList(stocks) {
       <div class="flex flex-wrap gap-1">`;
     for (const s of sectorStocks) {
       const chg = s.changePercent != null ? (s.changePercent >= 0 ? '+' : '') + s.changePercent.toFixed(2) + '%' : '';
-      const chgColor = s.changePercent >= 0 ? 'text-green-400' : 'text-red-400';
-      html += `<button data-symbol="${s.symbol}" class="stock-focus-btn px-2 py-1 rounded text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-blue-500/50 transition-all cursor-pointer group">
+      const chgColor = s.changePercent >= 0 ? 'text-green-400' : s.changePercent < 0 ? 'text-red-400' : 'text-gray-500';
+      const dim = s._hasData ? '' : 'opacity-40';
+      html += `<button data-symbol="${s.symbol}" class="stock-focus-btn px-2 py-1 rounded text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-blue-500/50 transition-all cursor-pointer group ${dim}">
         <span class="font-mono font-bold text-gray-200 group-hover:text-blue-400">${s.symbol}</span>
-        <span class="${chgColor} font-mono ml-1">${chg}</span>
+        ${chg ? `<span class="${chgColor} font-mono ml-1">${chg}</span>` : ''}
       </button>`;
     }
     html += `</div></div>`;
@@ -231,12 +229,10 @@ function buildStockList(stocks) {
 
   container.innerHTML = html;
 
-  // Wire click handlers
   container.querySelectorAll('.stock-focus-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const symbol = btn.dataset.symbol;
       focusOnStock(sceneObj, symbol);
-      // Highlight active button
       container.querySelectorAll('.stock-focus-btn').forEach(b => b.classList.remove('ring-1', 'ring-blue-500'));
       btn.classList.add('ring-1', 'ring-blue-500');
     });
@@ -247,22 +243,17 @@ function buildStockList(stocks) {
 async function init() {
   populateSelectors();
 
-  // Set up ThreeJS scene
   const container = document.getElementById('canvas-container');
   sceneObj = createScene(container);
-
-  // Start animation loop
   animate(sceneObj);
-
-  // Handle resize
   window.addEventListener('resize', () => resizeScene(sceneObj, container));
 
-  // Load data
   stocks = await loadData();
 
   if (stocks.length > 0) {
     document.getElementById('loading-overlay').style.display = 'none';
-    document.getElementById('stock-count').textContent = stocks.length + ' stocks loaded';
+    const withData = stocks.filter(s => s._hasData).length;
+    document.getElementById('stock-count').textContent = stocks.length + ' stocks (' + withData + ' with data)';
 
     const sel = getAxisSelections();
     buildStarfield(sceneObj, stocks, sel, METRICS);

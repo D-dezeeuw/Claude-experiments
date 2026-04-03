@@ -7,10 +7,28 @@ import {
   SUPABASE_URL, SUPABASE_SERVICE_KEY,
 } from '../_shared/config.ts';
 
-// Use service role key if available, otherwise fall back to anon key
-const AUTH_KEY = SUPABASE_SERVICE_KEY
-  || Deno.env.get('SUPABASE_ANON_KEY')
-  || '';
+// Both keys for function invocation — try anon first (known to work), fall back to service role
+const AUTH_KEYS = [
+  Deno.env.get('SUPABASE_ANON_KEY') || '',
+  SUPABASE_SERVICE_KEY,
+].filter(k => k.length > 0);
+
+async function tryFetch(url: string, key: string, signal: AbortSignal) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    signal,
+  });
+  const data = await res.json();
+  // Detect actual HTTP errors (401, 403, 500) hidden inside JSON responses
+  if (data.code === 401 || data.code === 403) {
+    throw new Error(`Auth failed (${data.code}): ${data.message || 'rejected'}`);
+  }
+  return { data, ok: res.ok && data.ok !== false };
+}
 
 async function callFunction(name: string, timeoutMs = 55000) {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
@@ -20,24 +38,29 @@ async function callFunction(name: string, timeoutMs = 55000) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${AUTH_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-    });
+    // Try each key until one works
+    let lastError = '';
+    for (const key of AUTH_KEYS) {
+      try {
+        const { data, ok } = await tryFetch(url, key, controller.signal);
+        clearTimeout(timer);
+        return { name, ok, duration: Date.now() - start, data };
+      } catch (e) {
+        lastError = (e as Error).message;
+        // If abort/timeout, don't try next key
+        if ((e as Error).name === 'AbortError') throw e;
+        // Auth error — try next key
+      }
+    }
+    // All keys failed
     clearTimeout(timer);
-    const data = await res.json();
-    const duration = Date.now() - start;
-    return { name, ok: data.ok !== false, duration, data };
+    return { name, ok: false, duration: Date.now() - start, error: lastError || 'All auth keys rejected' };
   } catch (e) {
     clearTimeout(timer);
-    const isTimeout = e.name === 'AbortError';
+    const isTimeout = (e as Error).name === 'AbortError';
     return {
       name,
-      ok: isTimeout, // timeout is not a failure — function keeps running in background
+      ok: isTimeout,
       duration: Date.now() - start,
       note: isTimeout ? 'running in background (incremental writes active)' : undefined,
       error: isTimeout ? undefined : (e as Error).message,

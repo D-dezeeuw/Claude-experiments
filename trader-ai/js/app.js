@@ -357,7 +357,8 @@ const App = {
    *  Data-fetching stages (geopolitical, market-pulse, stock-screener,
    *  fundamentals, news-sentiment) must come from the server pipeline. */
   async runComputeStages() {
-    if (!this.ctx.watchlist || !this.ctx.watchlist.length) return; // need server data first
+    // Need at least fundamentals or watchlist to compute
+    if ((!this.ctx.watchlist || !this.ctx.watchlist.length) && (!this.ctx.fundamentals || !this.ctx.fundamentals.length)) return;
 
     const toRun = STAGES.filter(s => this.COMPUTE_STAGES.includes(s.id) && !this.stageResults[s.id]);
     if (!toRun.length) return;

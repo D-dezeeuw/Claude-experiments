@@ -16,14 +16,15 @@ const RiskAssessment = {
   },
 
   async run(ctx) {
-    const watchlist = ctx.watchlist || [];
+    // Assess risk for ALL stocks, not just watchlist
+    const allStocks = ctx.fundamentals || ctx.watchlist || [];
     const fundamentals = ctx.fundamentals || [];
     const technicals = ctx.technicals || [];
-    if (!watchlist.length) return { error: 'No watchlist — run Stock Screener first', stocks: [] };
+    if (!allStocks.length) return { error: 'No stock data — run pipeline first', stocks: [] };
 
     const results = [];
 
-    for (const stock of watchlist) {
+    for (const stock of allStocks) {
       const fund = fundamentals.find(f => f.symbol === stock.symbol) || {};
       const tech = technicals.find(t => t.symbol === stock.symbol) || {};
 

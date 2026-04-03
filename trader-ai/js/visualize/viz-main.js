@@ -35,7 +35,7 @@ const METRICS = {
   price:         { label: 'Price $',          group: 'Price',         range: [0, 500],  key: 'price' },
 };
 
-const DEFAULTS = { x: 'investScore', y: 'vulnerability', z: 'riskRating', color: 'composite', size: 'changePercent' };
+const DEFAULTS = { x: 'composite', y: 'riskRating', z: 'beta', color: 'composite', size: 'changePercent' };
 
 // ── Globals ──
 let stocks = [];

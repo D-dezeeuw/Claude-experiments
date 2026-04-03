@@ -25,8 +25,9 @@ const DailyScorecard = {
   },
 
   async run(ctx) {
-    const watchlist = ctx.watchlist || [];
-    if (!watchlist.length) return { error: 'No watchlist — run previous stages first', stocks: [] };
+    // Score ALL stocks with available data, not just watchlist
+    const allStocks = ctx.fundamentals || ctx.watchlist || [];
+    if (!allStocks.length) return { error: 'No stock data — run pipeline first', stocks: [] };
 
     const fundamentals = ctx.fundamentals || [];
     const technicals = ctx.technicals || [];
@@ -43,7 +44,7 @@ const DailyScorecard = {
 
     const results = [];
 
-    for (const stock of watchlist) {
+    for (const stock of allStocks) {
       const fund = fundamentals.find(f => f.symbol === stock.symbol) || {};
       const tech = technicals.find(t => t.symbol === stock.symbol) || {};
       const sent = sentiments.find(s => s.symbol === stock.symbol) || {};

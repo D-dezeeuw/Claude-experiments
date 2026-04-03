@@ -358,13 +358,15 @@ export function setupRaycaster(sceneObj, stocks, metrics) {
         size: document.getElementById('axis-size').value,
       };
 
+      const s = sd.stock;
+      const verdictColor = (s.composite || 0) >= 60 ? '#4ade80' : (s.composite || 0) >= 40 ? '#facc15' : '#f87171';
       let ttHtml = `
         <div class="tt-symbol">${sd.symbol}</div>
         <div class="tt-company">${sd.company} &middot; ${sd.sector}</div>
-        <div class="tt-row"><span class="tt-label">${metrics[sel.x].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.x].key])}</span></div>
-        <div class="tt-row"><span class="tt-label">${metrics[sel.y].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.y].key])}</span></div>
-        <div class="tt-row"><span class="tt-label">${metrics[sel.z].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.z].key])}</span></div>
-        <div class="tt-row"><span class="tt-label">${metrics[sel.color].label}</span><span class="tt-value">${fmt(sd.stock[metrics[sel.color].key])}</span></div>
+        <div class="tt-row"><span class="tt-label">Verdict</span><span class="tt-value" style="color:${verdictColor}">${fmt(s.composite)}</span></div>
+        <div class="tt-row"><span class="tt-label">Risk Rating</span><span class="tt-value">${fmt(s.riskRating)}</span></div>
+        <div class="tt-row"><span class="tt-label">Invest Score</span><span class="tt-value">${fmt(s.investScore)}</span></div>
+        <div class="tt-row"><span class="tt-label">Change</span><span class="tt-value" style="color:${(s.changePercent||0)>=0?'#4ade80':'#f87171'}">${s.changePercent != null ? (s.changePercent>=0?'+':'') + s.changePercent.toFixed(2) + '%' : '—'}</span></div>
       `;
 
       if (cluster && cluster.length > 1) {

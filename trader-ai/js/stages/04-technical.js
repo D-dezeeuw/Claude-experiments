@@ -8,12 +8,13 @@ const TechnicalAnalysis = {
   description: 'MAs, RSI, MACD, support/resistance, volume profile',
 
   async run(ctx) {
-    const watchlist = ctx.watchlist || [];
-    if (!watchlist.length) return { error: 'No watchlist — run Stock Screener first', stocks: [] };
+    // Compute technicals for ALL stocks that have price history, not just watchlist
+    const allStocks = ctx.fundamentals || ctx.watchlist || [];
+    if (!allStocks.length) return { error: 'No stock data — run pipeline first', stocks: [] };
 
     const results = [];
 
-    for (const stock of watchlist) {
+    for (const stock of allStocks) {
       const technicals = await this.fetchTechnicals(stock.symbol);
       results.push({ ...stock, ...technicals });
     }

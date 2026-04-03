@@ -3,7 +3,7 @@
  * Loads stock data, sets up ThreeJS scene, wires axis selectors.
  */
 
-import { createScene, resizeScene, animate, flyTo } from './viz-scene.js';
+import { createScene, resizeScene, animate, flyTo, updateAxisLabels } from './viz-scene.js';
 import { buildStarfield, updateStarfield, setupRaycaster, focusOnStock } from './viz-points.js';
 
 // ── Metric Registry ──
@@ -88,6 +88,7 @@ function getAxisSelections() {
 function onAxisChange() {
   const sel = getAxisSelections();
   updateStarfield(stocks, sel, METRICS);
+  updateAxisLabels(METRICS[sel.x].label, METRICS[sel.y].label, METRICS[sel.z].label);
 }
 
 // ── Cache ──
@@ -257,6 +258,7 @@ async function init() {
 
     const sel = getAxisSelections();
     buildStarfield(sceneObj, stocks, sel, METRICS);
+    updateAxisLabels(METRICS[sel.x].label, METRICS[sel.y].label, METRICS[sel.z].label);
     setupRaycaster(sceneObj, stocks, METRICS);
     buildStockList(stocks);
   }

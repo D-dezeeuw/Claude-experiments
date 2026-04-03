@@ -3,8 +3,8 @@
  * Loads stock data, sets up ThreeJS scene, wires axis selectors.
  */
 
-import { createScene, resizeScene, animate } from './viz-scene.js';
-import { buildStarfield, updateStarfield, setupRaycaster } from './viz-points.js';
+import { createScene, resizeScene, animate, flyTo } from './viz-scene.js';
+import { buildStarfield, updateStarfield, setupRaycaster, focusOnStock } from './viz-points.js';
 
 // ── Metric Registry ──
 const METRICS = {
@@ -39,7 +39,7 @@ const DEFAULTS = { x: 'investScore', y: 'vulnerability', z: 'riskRating', color:
 
 // ── Globals ──
 let stocks = [];
-let scene, camera, renderer, composer, labelRenderer;
+let sceneObj = null;
 
 // ── Populate Dropdowns ──
 function populateSelectors() {
@@ -130,26 +130,85 @@ async function loadData() {
     }
   }
 
-  // Merge all per-stock data into flat array
-  const scorecard = stageResults['scorecard']?.stocks || ctx.scorecard || [];
+  // Start from ALL stocks — use fundamentals (all 49), not scorecard (limited to watchlist)
   const fundamentals = stageResults['fundamentals']?.stocks || ctx.fundamentals || [];
+  const scorecard = stageResults['scorecard']?.stocks || ctx.scorecard || [];
   const technicals = stageResults['technical']?.stocks || ctx.technicals || [];
 
-  const merged = scorecard.map(sc => {
-    const fund = fundamentals.find(f => f.symbol === sc.symbol) || {};
-    const tech = technicals.find(t => t.symbol === sc.symbol) || {};
-    const name = typeof TICKERS !== 'undefined' ? (TICKERS[sc.symbol] || sc.company || sc.symbol) : sc.symbol;
+  // If no fundamentals data, fall back to the full stock universe
+  let allStocks = fundamentals;
+  if (allStocks.length === 0 && typeof StockScreener !== 'undefined') {
+    allStocks = StockScreener.universe.map(s => ({ symbol: s.symbol, company: s.company, sector: s.sector }));
+  }
+
+  const merged = allStocks.map(fund => {
+    const sc = scorecard.find(s => s.symbol === fund.symbol) || {};
+    const tech = technicals.find(t => t.symbol === fund.symbol) || {};
+    const name = typeof TICKERS !== 'undefined' ? (TICKERS[fund.symbol] || fund.company || fund.symbol) : fund.symbol;
     return {
-      symbol: sc.symbol,
+      symbol: fund.symbol,
       company: name,
-      sector: fund.sector || sc.sector || '',
+      sector: fund.sector || '',
       ...fund,
       ...tech,
       ...sc,
     };
   });
 
+  console.info('3D View: loaded ' + merged.length + ' stocks (' + scorecard.length + ' with scorecard)');
   return merged;
+}
+
+// ── Stock List ──
+function buildStockList(stocks) {
+  const container = document.getElementById('stock-list');
+  if (!container) return;
+
+  // Group by sector
+  const bySector = {};
+  for (const s of stocks) {
+    const sector = s.sector || 'Unknown';
+    if (!bySector[sector]) bySector[sector] = [];
+    bySector[sector].push(s);
+  }
+
+  let html = '';
+  const sectorColors = {
+    'Energy': 'text-amber-400', 'Materials': 'text-orange-400', 'Industrials': 'text-slate-400',
+    'Consumer Discretionary': 'text-pink-400', 'Consumer Staples': 'text-green-400',
+    'Healthcare': 'text-red-400', 'Financials': 'text-emerald-400',
+    'Information Technology': 'text-blue-400', 'Communication Services': 'text-violet-400',
+    'Utilities': 'text-yellow-400', 'Real Estate': 'text-cyan-400',
+  };
+
+  for (const [sector, sectorStocks] of Object.entries(bySector)) {
+    const color = sectorColors[sector] || 'text-gray-400';
+    html += `<div class="mb-3">
+      <div class="text-[10px] uppercase tracking-wider ${color} mb-1 font-semibold">${sector}</div>
+      <div class="flex flex-wrap gap-1">`;
+    for (const s of sectorStocks) {
+      const chg = s.changePercent != null ? (s.changePercent >= 0 ? '+' : '') + s.changePercent.toFixed(2) + '%' : '';
+      const chgColor = s.changePercent >= 0 ? 'text-green-400' : 'text-red-400';
+      html += `<button data-symbol="${s.symbol}" class="stock-focus-btn px-2 py-1 rounded text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-blue-500/50 transition-all cursor-pointer group">
+        <span class="font-mono font-bold text-gray-200 group-hover:text-blue-400">${s.symbol}</span>
+        <span class="${chgColor} font-mono ml-1">${chg}</span>
+      </button>`;
+    }
+    html += `</div></div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Wire click handlers
+  container.querySelectorAll('.stock-focus-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const symbol = btn.dataset.symbol;
+      focusOnStock(sceneObj, symbol);
+      // Highlight active button
+      container.querySelectorAll('.stock-focus-btn').forEach(b => b.classList.remove('ring-1', 'ring-blue-500'));
+      btn.classList.add('ring-1', 'ring-blue-500');
+    });
+  });
 }
 
 // ── Init ──
@@ -158,12 +217,7 @@ async function init() {
 
   // Set up ThreeJS scene
   const container = document.getElementById('canvas-container');
-  const sceneObj = createScene(container);
-  scene = sceneObj.scene;
-  camera = sceneObj.camera;
-  renderer = sceneObj.renderer;
-  composer = sceneObj.composer;
-  labelRenderer = sceneObj.labelRenderer;
+  sceneObj = createScene(container);
 
   // Start animation loop
   animate(sceneObj);
@@ -181,6 +235,7 @@ async function init() {
     const sel = getAxisSelections();
     buildStarfield(sceneObj, stocks, sel, METRICS);
     setupRaycaster(sceneObj, stocks, METRICS);
+    buildStockList(stocks);
   }
 }
 

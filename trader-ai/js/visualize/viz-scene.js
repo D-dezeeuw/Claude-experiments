@@ -158,3 +158,27 @@ export function animate(sceneObj) {
   }
   loop();
 }
+
+/** Smoothly fly camera to focus on a 3D position */
+export function flyTo(sceneObj, targetPos) {
+  const { camera, controls } = sceneObj;
+  const offset = new THREE.Vector3(25, 18, 25);
+  const camTarget = targetPos.clone().add(offset);
+  const startPos = camera.position.clone();
+  const startTarget = controls.target.clone();
+  let frame = 0;
+  const total = 50;
+
+  function step() {
+    frame++;
+    const t = Math.min(1, frame / total);
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    camera.position.lerpVectors(startPos, camTarget, ease);
+    controls.target.lerpVectors(startTarget, targetPos, ease);
+    controls.update();
+
+    if (frame < total) requestAnimationFrame(step);
+  }
+  step();
+}

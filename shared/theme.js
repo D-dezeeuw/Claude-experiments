@@ -21,6 +21,13 @@ function toggleTheme() {
 }
 
 function createToggleButton() {
+  // If a #theme-toggle already exists in the markup (e.g. inline nav), reuse it
+  const existing = document.getElementById('theme-toggle');
+  if (existing) {
+    existing.onclick = toggleTheme;
+    updateToggleIcon();
+    return;
+  }
   const btn = document.createElement('button');
   btn.id = 'theme-toggle';
   btn.onclick = toggleTheme;

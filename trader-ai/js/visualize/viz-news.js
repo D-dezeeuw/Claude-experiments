@@ -254,4 +254,90 @@ export function renderRadialChart(container, cityData) {
 
   svg += '</svg>';
   container.innerHTML = svg;
+
+  // ── Zoom & Pan ──
+  setupZoomPan(container);
+}
+
+function setupZoomPan(container) {
+  const svg = container.querySelector('svg');
+  if (!svg) return;
+
+  let scale = 1;
+  let panX = 0, panY = 0;
+  let isDragging = false;
+  let dragStartX = 0, dragStartY = 0;
+  let panStartX = 0, panStartY = 0;
+
+  function applyTransform() {
+    svg.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    svg.style.transformOrigin = 'center center';
+  }
+
+  function zoom(delta) {
+    scale = Math.max(0.5, Math.min(4, scale + delta));
+    applyTransform();
+  }
+
+  function reset() {
+    scale = 1; panX = 0; panY = 0;
+    applyTransform();
+  }
+
+  // Scroll to zoom
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoom(e.deltaY < 0 ? 0.15 : -0.15);
+  }, { passive: false });
+
+  // Drag to pan
+  container.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    panStartX = panX;
+    panStartY = panY;
+    container.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    panX = panStartX + (e.clientX - dragStartX);
+    panY = panStartY + (e.clientY - dragStartY);
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.style.cursor = 'grab';
+  });
+
+  // Touch support
+  container.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      isDragging = true;
+      dragStartX = e.touches[0].clientX;
+      dragStartY = e.touches[0].clientY;
+      panStartX = panX;
+      panStartY = panY;
+    }
+  }, { passive: true });
+
+  container.addEventListener('touchmove', (e) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    panX = panStartX + (e.touches[0].clientX - dragStartX);
+    panY = panStartY + (e.touches[0].clientY - dragStartY);
+    applyTransform();
+  }, { passive: true });
+
+  container.addEventListener('touchend', () => { isDragging = false; });
+
+  // Button controls
+  const zoomIn = document.getElementById('radial-zoom-in');
+  const zoomOut = document.getElementById('radial-zoom-out');
+  const zoomReset = document.getElementById('radial-zoom-reset');
+  if (zoomIn) zoomIn.addEventListener('click', () => zoom(0.3));
+  if (zoomOut) zoomOut.addEventListener('click', () => zoom(-0.3));
+  if (zoomReset) zoomReset.addEventListener('click', reset);
 }

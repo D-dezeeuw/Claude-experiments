@@ -116,13 +116,24 @@
             </div>
         </div>
 
-        <!-- 3D canvas -->
-        <div id="canvas-container" class="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-[#08080f]">
+        <!-- World News Pulse + 3D Canvas side by side -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <!-- Radial Chart -->
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-[#08080f] p-4">
+                <h3 class="text-sm font-semibold mb-2 text-gray-300">World News Pulse</h3>
+                <div id="radial-chart" class="aspect-square">
+                    <div class="flex items-center justify-center h-full text-sm text-gray-500 animate-pulse">Loading news data...</div>
+                </div>
+            </div>
+
+            <!-- 3D Canvas (takes 2/3 width) -->
+            <div id="canvas-container" class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-[#08080f]" style="min-height:500px;">
             <div id="tooltip"></div>
             <div id="loading-overlay" class="absolute inset-0 flex items-center justify-center z-10">
                 <span class="text-sm text-gray-500 animate-pulse">Loading stock data...</span>
             </div>
         </div>
+        </div><!-- /grid -->
 
         <!-- Legend -->
         <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">

@@ -5,6 +5,7 @@
 
 import { createScene, resizeScene, animate, flyTo, updateAxisLabels } from './viz-scene.js';
 import { buildStarfield, updateStarfield, setupRaycaster, focusOnStock } from './viz-points.js';
+import { analyzeNewsByCity, renderRadialChart } from './viz-news.js';
 
 // ── Metric Registry ──
 const METRICS = {
@@ -112,11 +113,16 @@ function loadCache() {
 }
 
 // ── Data Loading ──
+let _newsArticles = [];
+let _regionRisk = {};
+
 async function loadData() {
   // 1. Try cache first (instant, no network)
   const cached = loadCache();
-  if (cached && cached.length >= 40) { // only use cache if it has most stocks
+  if (cached && cached.length >= 40) {
     console.info('3D View: loaded ' + cached.length + ' stocks from cache');
+    // Still need news for radial chart — load in background
+    loadNewsData();
     return cached;
   }
 
@@ -132,6 +138,10 @@ async function loadData() {
     const transformed = DataClient.transformForUI(serverData);
     stageResults = transformed.stageResults;
     ctx = transformed.ctx;
+
+    // Extract news data for radial chart
+    _newsArticles = serverData.news || [];
+    _regionRisk = stageResults['geopolitical']?.regionRisk || serverData.pipeline?.['analysis']?.regionRisk || {};
   }
 
   // Run compute stages to get scorecard
@@ -240,6 +250,31 @@ function buildStockList(stocks) {
   });
 }
 
+// ── Load news data separately (for cached stock path) ──
+async function loadNewsData() {
+  if (_newsArticles.length > 0) return; // already loaded
+  if (typeof initSupabase !== 'undefined') initSupabase();
+  if (typeof DataClient === 'undefined' || typeof sbClient === 'undefined' || !sbClient) return;
+
+  const serverData = await DataClient.load();
+  if (serverData) {
+    _newsArticles = serverData.news || [];
+    _regionRisk = serverData.pipeline?.['analysis']?.regionRisk || {};
+    buildRadialChart();
+  }
+}
+
+function buildRadialChart() {
+  const el = document.getElementById('radial-chart');
+  if (!el) return;
+  if (_newsArticles.length === 0) {
+    el.innerHTML = '<div class="flex items-center justify-center h-full text-sm text-gray-500">No news data — run pipeline first</div>';
+    return;
+  }
+  const cityData = analyzeNewsByCity(_newsArticles, _regionRisk);
+  renderRadialChart(el, cityData);
+}
+
 // ── Init ──
 async function init() {
   populateSelectors();
@@ -262,6 +297,9 @@ async function init() {
     setupRaycaster(sceneObj, stocks, METRICS);
     buildStockList(stocks);
   }
+
+  // Build radial news chart
+  buildRadialChart();
 }
 
 init();

@@ -305,17 +305,34 @@ const DataClient = {
 
     // News & Sentiment
     if (news.length > 0) {
+      // Keyword sentiment scorer (fallback when DB has no score)
+      const posWords = ['surge','jump','gain','rally','beat','record','upgrade','profit','growth','bullish','soar','boom','outperform','strong','positive','recovery','breakthrough','exceed','optimis','buy','innovation','deal','approve'];
+      const negWords = ['drop','fall','loss','decline','miss','crash','downgrade','debt','warning','bearish','plunge','slump','underperform','weak','negative','recession','layoff','lawsuit','investigation','fraud','cut','sell','fear','risk','default','crisis','war','attack','sanctions'];
+
+      function scoreText(text) {
+        if (!text) return 0;
+        const lower = text.toLowerCase();
+        let score = 0, hits = 0;
+        for (const w of posWords) { if (lower.includes(w)) { score += 1; hits++; } }
+        for (const w of negWords) { if (lower.includes(w)) { score -= 1; hits++; } }
+        return hits > 0 ? Math.max(-1, Math.min(1, score / hits)) : 0;
+      }
+
       const bySymbol = {};
       for (const article of news) {
         const sym = article.symbol || '_general';
         if (!bySymbol[sym]) bySymbol[sym] = [];
+        // Use DB score if available, otherwise compute from keywords
+        const dbScore = article.sentiment_score;
+        const text = (article.headline || '') + ' ' + (article.summary || '');
+        const score = (dbScore != null && dbScore !== 0) ? dbScore : scoreText(text);
         bySymbol[sym].push({
           headline: article.headline,
           source: article.source,
           url: article.url,
           summary: article.summary,
           datetime: article.published_at,
-          sentiment: { score: article.sentiment_score || 0 },
+          sentiment: { score: +score.toFixed(3) },
         });
       }
 

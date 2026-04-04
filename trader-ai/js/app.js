@@ -643,7 +643,7 @@ const App = {
     const strategyTag = this.detectStrategy(tech, stock);
 
     let html = `
-      <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+      <div class="p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-colors cursor-pointer" onclick="App.showStockDetail('${stock.symbol}')" title="Click for detailed view">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-2">
             ${tickerLabel(stock.symbol, 'font-bold text-base')}
@@ -717,6 +717,176 @@ const App = {
 
     html += '</div>';
     return html;
+  },
+
+  showStockDetail(symbol) {
+    const fund = (this.ctx.fundamentals || []).find(f => f.symbol === symbol) || {};
+    const tech = (this.ctx.technicals || []).find(t => t.symbol === symbol) || {};
+    const sc = (this.ctx.scorecard || []).find(s => s.symbol === symbol) ||
+               (this.stageResults['scorecard']?.stocks || []).find(s => s.symbol === symbol) || {};
+    const sent = (this.ctx.sentiment || []).find(s => s.symbol === symbol) || {};
+    const risk = (this.ctx.risk || []).find(r => r.symbol === symbol) || {};
+    const name = typeof TICKERS !== 'undefined' ? (TICKERS[symbol] || fund.company || symbol) : symbol;
+
+    // Get full price history
+    const hist = typeof History !== 'undefined' ? History.load(symbol) : null;
+    const candles = hist?.candles || [];
+
+    // Build chart (larger sparkline with more detail)
+    let chartHtml = '<div class="text-center text-xs text-gray-500 py-8">No price history available</div>';
+    if (candles.length > 5) {
+      const w = 560, h = 180, pad = 30;
+      const closes = candles.map(c => c.close);
+      const dates = candles.map(c => c.date);
+      const min = Math.min(...closes) * 0.995;
+      const max = Math.max(...closes) * 1.005;
+      const range = max - min || 1;
+
+      let path = '';
+      let areaPath = '';
+      const points = closes.map((c, i) => {
+        const x = pad + (i / (closes.length - 1)) * (w - pad * 2);
+        const y = pad + (1 - (c - min) / range) * (h - pad * 2);
+        return { x, y };
+      });
+
+      path = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+      areaPath = path + ` L${points[points.length-1].x},${h-pad} L${points[0].x},${h-pad} Z`;
+
+      const up = closes[closes.length - 1] >= closes[0];
+      const lineColor = up ? '#4ade80' : '#f87171';
+      const fillColor = up ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)';
+
+      // Y-axis labels
+      let yLabels = '';
+      for (let i = 0; i <= 4; i++) {
+        const val = min + (i / 4) * range;
+        const y = pad + (1 - i / 4) * (h - pad * 2);
+        yLabels += `<text x="${pad-4}" y="${y+3}" text-anchor="end" fill="#64748b" font-size="9" font-family="monospace">$${val.toFixed(0)}</text>`;
+        yLabels += `<line x1="${pad}" y1="${y}" x2="${w-pad}" y2="${y}" stroke="rgba(100,116,139,0.1)" stroke-width="1"/>`;
+      }
+
+      // X-axis date labels (first, mid, last)
+      const dateIdxs = [0, Math.floor(dates.length / 2), dates.length - 1];
+      let xLabels = '';
+      for (const di of dateIdxs) {
+        const x = points[di].x;
+        xLabels += `<text x="${x}" y="${h-8}" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">${dates[di]?.substring(5) || ''}</text>`;
+      }
+
+      chartHtml = `<svg viewBox="0 0 ${w} ${h}" class="w-full" style="height:180px">
+        ${yLabels}${xLabels}
+        <path d="${areaPath}" fill="${fillColor}"/>
+        <path d="${path}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="${points[points.length-1].x}" cy="${points[points.length-1].y}" r="3" fill="${lineColor}"/>
+      </svg>`;
+    }
+
+    // Metrics grid
+    const m = (label, val, color) => {
+      const display = val != null && !isNaN(val) ? (typeof val === 'number' ? val.toFixed(2) : val) : '—';
+      return `<div class="flex justify-between"><span class="text-gray-500">${label}</span><span class="font-mono ${color || 'text-gray-200'}">${display}</span></div>`;
+    };
+
+    const verdictColor = (sc.composite || 0) >= 60 ? 'text-green-400' : (sc.composite || 0) >= 40 ? 'text-yellow-400' : 'text-red-400';
+
+    const html = `
+      <div id="stock-detail-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this)this.remove()">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <!-- Header -->
+          <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-3">
+                <span class="text-xl font-bold">${symbol}</span>
+                <span class="text-sm text-gray-400">${name}</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-800 text-gray-400">${fund.sector || ''}</span>
+              </div>
+              <div class="flex items-center gap-4 mt-1 text-sm">
+                <span class="font-mono font-bold text-lg">${fund.price ? '$' + fund.price.toFixed(2) : '—'}</span>
+                <span class="font-mono ${(fund.changePercent||0) >= 0 ? 'text-green-400' : 'text-red-400'}">${fund.changePercent != null ? (fund.changePercent >= 0 ? '+' : '') + fund.changePercent.toFixed(2) + '%' : ''}</span>
+              </div>
+            </div>
+            <button onclick="document.getElementById('stock-detail-backdrop').remove()" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-lg cursor-pointer">&times;</button>
+          </div>
+
+          <!-- Chart -->
+          <div class="p-5 border-b border-gray-800">
+            <div class="text-xs text-gray-500 mb-2">${candles.length} days of price history</div>
+            ${chartHtml}
+          </div>
+
+          <!-- Scores -->
+          <div class="p-5 border-b border-gray-800">
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Scorecard</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div class="text-center">
+                <div class="text-2xl font-bold ${verdictColor}">${sc.composite || '—'}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Verdict</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-blue-400">${sc.investScore || '—'}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Invest</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-orange-400">${sc.vulnerability || '—'}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Vulnerability</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-red-400">${sc.riskRating || '—'}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Risk</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fundamentals + Technical -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-800">
+            <div class="p-5">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Fundamentals</div>
+              <div class="space-y-1.5 text-xs">
+                ${m('P/E', fund.pe)}
+                ${m('Revenue Growth', fund.revenueGrowth, fund.revenueGrowth > 0 ? 'text-green-400' : 'text-red-400')}
+                ${m('Op. Margin', fund.operatingMargin)}
+                ${m('Debt/Equity', fund.debtToEquity, fund.debtToEquity > 2 ? 'text-red-400' : '')}
+                ${m('ROE', fund.roe, fund.roe > 15 ? 'text-green-400' : '')}
+                ${m('Beta', fund.beta)}
+                ${m('Div Yield', fund.dividendYield)}
+              </div>
+            </div>
+            <div class="p-5">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Technical</div>
+              <div class="space-y-1.5 text-xs">
+                ${m('RSI', tech.rsi, tech.rsi > 70 ? 'text-red-400' : tech.rsi < 30 ? 'text-green-400' : '')}
+                ${m('Signal', tech.signal, tech.signal === 'Bullish' ? 'text-green-400' : tech.signal === 'Bearish' ? 'text-red-400' : '')}
+                ${m('MACD', tech.macd)}
+                ${m('Support', tech.support)}
+                ${m('Resistance', tech.resistance)}
+                ${m('Volume Ratio', tech.volumeRatio, tech.volumeRatio > 1.5 ? 'text-yellow-400' : '')}
+                ${m('ATR', tech.atr)}
+              </div>
+            </div>
+          </div>
+
+          ${sent.articles?.length ? `
+          <div class="p-5 border-t border-gray-800">
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Recent News (${sent.articleCount || 0})</div>
+            <div class="space-y-2 max-h-40 overflow-y-auto">
+              ${sent.articles.slice(0, 5).map(a => {
+                const sColor = a.sentiment?.score > 0.2 ? 'text-green-400' : a.sentiment?.score < -0.2 ? 'text-red-400' : 'text-gray-500';
+                return `<div class="flex items-start gap-2 text-xs">
+                  <span class="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.sentiment?.score > 0.2 ? 'bg-green-500' : a.sentiment?.score < -0.2 ? 'bg-red-500' : 'bg-gray-500'}"></span>
+                  <span class="text-gray-300">${a.headline || ''} <span class="text-gray-600">${a.source || ''}</span></span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
+        </div>
+      </div>`;
+
+    // Remove existing popover
+    const existing = document.getElementById('stock-detail-backdrop');
+    if (existing) existing.remove();
+
+    document.body.insertAdjacentHTML('beforeend', html);
   },
 
   detectStrategy(tech, stock) {

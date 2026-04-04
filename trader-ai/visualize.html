@@ -122,13 +122,13 @@
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-[#08080f] p-4 relative overflow-hidden">
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-sm font-semibold text-gray-300">World News Pulse</h3>
-                    <div class="flex gap-1">
+                    <div class="flex gap-1 relative z-10">
                         <button id="radial-zoom-in" class="w-7 h-7 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-sm font-bold cursor-pointer transition-colors">+</button>
                         <button id="radial-zoom-out" class="w-7 h-7 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-sm font-bold cursor-pointer transition-colors">−</button>
                         <button id="radial-zoom-reset" class="w-7 h-7 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-[10px] font-bold cursor-pointer transition-colors">⟲</button>
                     </div>
                 </div>
-                <div id="radial-chart" class="aspect-square" style="cursor:grab;">
+                <div id="radial-chart" class="aspect-square overflow-hidden" style="cursor:grab;position:relative;z-index:1;">
                     <div class="flex items-center justify-center h-full text-sm text-gray-500 animate-pulse">Loading news data...</div>
                 </div>
                 <div class="mt-1 text-[10px] text-gray-600 text-center">Scroll to zoom · Drag to pan</div>

@@ -173,14 +173,6 @@ export function renderRadialChart(container, cityData) {
       font-family="system-ui, sans-serif" text-anchor="${anchor}"
       transform="rotate(${textRotate}, ${lx}, ${ly})"
       style="text-shadow: 0 0 6px rgba(0,0,0,0.9)">${city.name}</text>`;
-
-    // Small article count
-    const countR = innerR + barLen + 26;
-    const clx = cx + Math.cos(angle) * countR;
-    const cly = cy + Math.sin(angle) * countR;
-    svg += `<text x="${clx}" y="${cly}" fill="rgba(148,163,184,0.6)" font-size="9"
-      font-family="monospace" text-anchor="${anchor}"
-      transform="rotate(${textRotate}, ${clx}, ${cly})">${city.articleCount} articles</text>`;
   }
 
   // Center donut
